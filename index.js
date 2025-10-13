@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import { createCheckout, handleStripeWebhook, runDailyTransfers, createAccountLink } from "./stripe.js";
 import { sendPaymentLinkSMS, sendPaymentConfirmationSMS, testSMS } from "./textmagic.js";
 import { getAllServicePricing, getServicePricing, upsertServicePricing, createProvider } from "./db.js";
+import { syncProvidersFromMainDatabase, testProviderDatabaseConnection, getProviderFromMainDatabase } from "./provider-sync.js";
 
 // Load environment variables
 dotenv.config();
@@ -398,8 +399,8 @@ app.post("/admin/sync-providers", express.json(), async (req, res) => {
     const { providers } = req.body;
 
     if (!providers || !Array.isArray(providers)) {
-      return res.status(400).json({ 
-        error: "providers array is required" 
+      return res.status(400).json({
+        error: "providers array is required"
       });
     }
 
@@ -410,35 +411,35 @@ app.post("/admin/sync-providers", express.json(), async (req, res) => {
     for (const providerData of providers) {
       try {
         const { id, email, name, phone } = providerData;
-        
+
         if (!id || !email) {
-          results.push({ 
-            provider: providerData, 
-            success: false, 
-            error: "Missing id or email" 
+          results.push({
+            provider: providerData,
+            success: false,
+            error: "Missing id or email"
           });
           errorCount++;
           continue;
         }
 
         const provider = await createProvider(email, id, name, phone);
-        results.push({ 
-          provider: provider, 
-          success: true 
+        results.push({
+          provider: provider,
+          success: true
         });
         successCount++;
-        
+
       } catch (error) {
-        results.push({ 
-          provider: providerData, 
-          success: false, 
-          error: error.message 
+        results.push({
+          provider: providerData,
+          success: false,
+          error: error.message
         });
         errorCount++;
       }
     }
 
-    res.json({ 
+    res.json({
       success: true,
       summary: {
         total: providers.length,
@@ -447,10 +448,49 @@ app.post("/admin/sync-providers", express.json(), async (req, res) => {
       },
       results: results
     });
-    
+
   } catch (error) {
     console.error("Bulk sync providers error:", error);
     res.status(500).json({ error: "Failed to sync providers" });
+  }
+});
+
+// Test connection to your provider database
+app.get("/admin/test-provider-db", async (req, res) => {
+  try {
+    const result = await testProviderDatabaseConnection();
+    res.json(result);
+  } catch (error) {
+    console.error("Test provider DB error:", error);
+    res.status(500).json({ error: "Failed to test provider database connection" });
+  }
+});
+
+// Sync all providers from your main database
+app.post("/admin/sync-from-main-db", async (req, res) => {
+  try {
+    const result = await syncProvidersFromMainDatabase();
+    res.json(result);
+  } catch (error) {
+    console.error("Sync from main DB error:", error);
+    res.status(500).json({ error: "Failed to sync from main database" });
+  }
+});
+
+// Get provider info from your main database
+app.get("/admin/provider-info/:providerId", async (req, res) => {
+  try {
+    const { providerId } = req.params;
+    const provider = await getProviderFromMainDatabase(providerId);
+    
+    if (!provider) {
+      return res.status(404).json({ error: "Provider not found in main database" });
+    }
+    
+    res.json({ provider });
+  } catch (error) {
+    console.error("Get provider info error:", error);
+    res.status(500).json({ error: "Failed to get provider info" });
   }
 });
 
@@ -459,7 +499,6 @@ app.use((error, req, res, next) => {
   console.error("Unhandled error:", error);
   res.status(500).json({ error: "Internal server error" });
 });
-
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: "Endpoint not found" });
