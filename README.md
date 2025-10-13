@@ -18,6 +18,10 @@ A Node.js service for handling Stripe payments with automatic provider payouts. 
 - ✅ Automated daily transfers to providers
 - ✅ Provider Connect account onboarding
 - ✅ Provider status checking
+- ✅ **TextMagic SMS integration**
+- ✅ **Automatic payment link SMS delivery**
+- ✅ **Payment confirmation SMS**
+- ✅ **Provider payout notifications**
 - ✅ Error handling and logging
 
 ## Setup
@@ -43,6 +47,10 @@ TIMEZONE=America/New_York
 
 # Domain Configuration
 DOMAIN=https://yourdomain.com               # Your domain for redirect URLs
+
+# TextMagic SMS Configuration
+TEXTMAGIC_USERNAME=your_textmagic_username  # Your TextMagic username
+TEXTMAGIC_API_KEY=your_textmagic_api_key    # Your TextMagic API key
 ```
 
 ### 2. Database Setup
@@ -110,6 +118,20 @@ Create a Stripe Checkout session.
 }
 ```
 
+### `POST /checkout-with-sms`
+Create a Stripe Checkout session and send payment link via SMS.
+
+```json
+{
+  "providerId": "prov_123",
+  "productName": "Mobile Massage 60",
+  "amountCents": 17000,
+  "customerPhone": "+1234567890",
+  "customerName": "John Doe",
+  "providerName": "Sarah's Massage"
+}
+```
+
 ### `POST /stripe-webhook`
 Stripe webhook endpoint (handles `checkout.session.completed`).
 
@@ -127,6 +149,39 @@ Check provider's Connect account status.
 
 ### `POST /admin/run-daily-transfers`
 Manually trigger daily transfer process.
+
+### `POST /admin/test-sms`
+Test SMS functionality.
+
+```json
+{
+  "phone": "+1234567890"
+}
+```
+
+### `POST /send-confirmation-sms`
+Send payment confirmation SMS to customer.
+
+```json
+{
+  "customerPhone": "+1234567890",
+  "customerName": "John Doe",
+  "serviceName": "Mobile Massage 60",
+  "amount": 17000,
+  "providerName": "Sarah's Massage"
+}
+```
+
+## 📱 Customer Experience
+
+### Updated SMS Flow:
+```
+1. Gets SMS: "Your 60 min Mobile Massage ($150.00) is confirmed. Pay after your massage here: [stripe-link]"
+2. Completes massage service
+3. Clicks link → Sees "$150 + tip option"  
+4. Adds $20 tip → Total $170
+5. Pays → Provider gets $120 + $20 tip = $140, You keep $50
+```
 
 ## WordPress Integration
 

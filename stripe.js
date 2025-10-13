@@ -4,36 +4,75 @@ import {
   upsertJob, 
   listPaidJobsForDate, 
   markJobsTransferred, 
-  ensureConnectAccount 
+  ensureConnectAccount,
+  getServicePricing
 } from "./db.js";
+import { sendPaymentConfirmationSMS, sendTransferNotificationSMS } from "./textmagic.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET);
 
 /**
- * Create a Stripe Checkout session for a provider
+ * Create a Stripe Checkout session for a provider with tip option
  */
-export async function createCheckout({ providerId, productName, amountCents }) {
+export async function createCheckout({ providerId, productName, amountCents, allowTips = true, serviceBreakdown = null }) {
   try {
-    const session = await stripe.checkout.sessions.create({
+    const lineItems = [{
+      price_data: {
+        currency: "usd",
+        unit_amount: amountCents,
+        product_data: {
+          name: productName
+        }
+      },
+      quantity: 1
+    }];
+
+    // Add tip options if enabled
+    const sessionConfig = {
       mode: "payment",
-      line_items: [{
-        price_data: {
-          currency: "usd",
-          unit_amount: amountCents,
-          product_data: {
-            name: productName
-          }
-        },
-        quantity: 1
-      }],
+      line_items: lineItems,
       success_url: `${process.env.DOMAIN || process.env.RENDER_EXTERNAL_URL || 'https://localhost:3000'}/success?sid={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.DOMAIN || process.env.RENDER_EXTERNAL_URL || 'https://localhost:3000'}/cancel`,
       metadata: {
-        provider_id: providerId
+        provider_id: providerId,
+        service_amount_cents: amountCents.toString(),
+        service_breakdown: serviceBreakdown ? JSON.stringify(serviceBreakdown) : null
       }
-    });
+    };
 
-    console.log(`Created checkout session ${session.id} for provider ${providerId}`);
+    // Enable tips with preset amounts
+    if (allowTips) {
+      sessionConfig.invoice_creation = {
+        enabled: true,
+        invoice_data: {
+          description: `${productName} - Gold Touch Massage`,
+          metadata: {
+            provider_id: providerId
+          }
+        }
+      };
+      
+      // Add tip line item as adjustable quantity
+      lineItems.push({
+        price_data: {
+          currency: "usd",
+          unit_amount: 500, // $5 increments
+          product_data: {
+            name: "Tip for your massage therapist"
+          }
+        },
+        quantity: 0, // Customer can adjust
+        adjustable_quantity: {
+          enabled: true,
+          minimum: 0,
+          maximum: 20 // Up to $100 tip (20 x $5)
+        }
+      });
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionConfig);
+
+    console.log(`Created checkout session ${session.id} for provider ${providerId} (${productName}: $${amountCents/100})`);
     return session.url;
   } catch (error) {
     console.error("Error creating checkout session:", error);
@@ -87,27 +126,41 @@ export async function handleStripeWebhook(req, res) {
  */
 async function handleCheckoutCompleted(session) {
   const providerId = session.metadata.provider_id;
-  const paymentIntent = session.payment_intent;
+  const serviceAmountCents = parseInt(session.metadata.service_amount_cents || session.amount_total);
+  const serviceBreakdown = session.metadata.service_breakdown ? JSON.parse(session.metadata.service_breakdown) : null;
+  
+  if (!providerId) {
+    console.error("No provider_id in session metadata");
+    return;
+  }
 
-  console.log(`Processing completed checkout ${session.id} for provider ${providerId}`);
+  // Calculate tip amount
+  const totalPaid = session.amount_total;
+  const tipAmount = totalPaid - serviceAmountCents;
+  
+  console.log(`Payment breakdown - Service: $${serviceAmountCents/100}, Tip: $${tipAmount/100}, Total: $${totalPaid/100}`);
 
-  await upsertJob({
-    id: session.id,
+  // Record the job in our database with full amount (service + tip)
+  await upsertJob(
+    session.id,
     providerId,
-    amountCents: session.amount_total,
-    status: "paid",
-    paymentIntentId: typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id,
-    createdAt: new Date()
-  });
+    totalPaid, // Total amount including tip
+    "paid",
+    session.payment_intent,
+    {
+      service_amount_cents: serviceAmountCents,
+      tip_amount_cents: tipAmount,
+      service_breakdown: serviceBreakdown
+    }
+  );
 
-  console.log(`Job recorded for provider ${providerId}, amount: ${session.amount_total} cents`);
+  console.log(`Recorded payment: ${session.id} for provider ${providerId}, service: $${serviceAmountCents/100}, tip: $${tipAmount/100}, total: $${totalPaid/100}`);
 }
 
 /**
  * Get today's date in the specified timezone
  */
 function todayInTZ(tz) {
-  const now = new Date();
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: tz,
     year: "numeric",
@@ -132,11 +185,40 @@ export async function runDailyTransfers(date = todayInTZ(process.env.TIMEZONE ||
       return;
     }
 
-    // Calculate totals per provider
+    // Calculate totals per provider (including tips)
     const totals = {};
     for (const job of jobs) {
-      const providerCut = Number(process.env.PROVIDER_CUT_CENTS || 12000);
-      totals[job.providerId] = (totals[job.providerId] || 0) + providerCut;
+      // Get service pricing to calculate proper provider cut
+      const serviceAmountCents = parseInt(job.metadata?.service_amount_cents || job.amount_cents);
+      const tipAmount = job.amount_cents - serviceAmountCents;
+      const serviceBreakdown = job.metadata?.service_breakdown ? JSON.parse(job.metadata.service_breakdown) : null;
+      
+      let providerCut = 0;
+      
+      if (serviceBreakdown && Array.isArray(serviceBreakdown)) {
+        // Calculate provider cut from service breakdown (for combined services)
+        for (const service of serviceBreakdown) {
+          providerCut += service.providerCut || 0;
+        }
+        console.log(`Job ${job.id}: Combined services provider cut $${providerCut/100}`);
+      } else {
+        // Single service - look up pricing
+        const serviceName = job.metadata?.service_name || 'Unknown Service';
+        const pricing = await getServicePricing(serviceName);
+        
+        if (pricing) {
+          providerCut = pricing.provider_cut_cents;
+        } else {
+          // Fallback to environment variable
+          providerCut = Number(process.env.PROVIDER_CUT_CENTS || 12000);
+        }
+        console.log(`Job ${job.id}: Single service provider cut $${providerCut/100}`);
+      }
+      
+      const totalProviderAmount = providerCut + tipAmount; // Service cut + full tip
+      totals[job.provider_id] = (totals[job.provider_id] || 0) + totalProviderAmount;
+      
+      console.log(`Job ${job.id}: Service cut $${providerCut/100}, Tip $${tipAmount/100}, Total to provider $${totalProviderAmount/100}`);
     }
 
     console.log("Provider totals:", totals);

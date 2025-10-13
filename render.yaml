@@ -29,6 +29,10 @@ services:
         value: "America/New_York"
       - key: DOMAIN
         generateValue: true  # Auto-generates based on service URL
+      - key: SMS_BRIDGE_URL
+        sync: false  # Set to your booking system SMS endpoint
+      - key: SMS_BRIDGE_TOKEN
+        sync: false  # Optional security token
 
   # Daily transfer cron job
   - type: cron
