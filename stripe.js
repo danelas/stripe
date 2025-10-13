@@ -39,7 +39,6 @@ export async function createCheckout({ providerId, productName, amountCents, all
         service_breakdown: serviceBreakdown ? JSON.stringify(serviceBreakdown) : null
       }
     };
-
     // Enable tips with preset amounts
     if (allowTips) {
       sessionConfig.invoice_creation = {
@@ -51,8 +50,8 @@ export async function createCheckout({ providerId, productName, amountCents, all
           }
         }
       };
-      
-      // Add tip line item as adjustable quantity
+
+      // Add tip line item with adjustable quantity
       lineItems.push({
         price_data: {
           currency: "usd",
@@ -61,15 +60,14 @@ export async function createCheckout({ providerId, productName, amountCents, all
             name: "Tip for your massage therapist"
           }
         },
-        quantity: 0, // Customer can adjust
+        quantity: 0, // Start with no tip
         adjustable_quantity: {
           enabled: true,
-          minimum: 0,
-          maximum: 20 // Up to $100 tip (20 x $5)
+          minimum: 0, // Allow no tip
+          maximum: 20 // Max $100 tip
         }
       });
     }
-
     const session = await stripe.checkout.sessions.create(sessionConfig);
 
     console.log(`Created checkout session ${session.id} for provider ${providerId} (${productName}: $${amountCents/100})`);
