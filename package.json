@@ -1,0 +1,29 @@
+{
+  "name": "stripe-payment-service",
+  "version": "1.0.0",
+  "description": "Stripe payment processing service for provider payouts - sends customer stripe to pay at the end of massage",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "build": "echo 'No build step required'",
+    "test": "echo 'No tests specified'"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "stripe": "^14.7.0",
+    "pg": "^8.11.3",
+    "dotenv": "^16.3.1"
+  },
+  "engines": {
+    "node": "18.x"
+  },
+  "keywords": ["stripe", "payments", "express", "nodejs", "massage", "render"],
+  "author": "danelas",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danelas/stripe.git"
+  }
+}

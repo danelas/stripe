@@ -1,0 +1,52 @@
+# Render Blueprint for Stripe Payment Service
+# This file can be used to deploy the entire stack on Render
+
+services:
+  # Main web service
+  - type: web
+    name: stripe-payment-service
+    env: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: STRIPE_SECRET
+        sync: false  # Set manually in Render dashboard
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false  # Set manually in Render dashboard
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stripe-payment-db
+          property: connectionString
+      - key: PLATFORM_FEE_CENTS
+        value: "5000"
+      - key: PROVIDER_CUT_CENTS
+        value: "12000"
+      - key: TIMEZONE
+        value: "America/New_York"
+      - key: DOMAIN
+        generateValue: true  # Auto-generates based on service URL
+
+  # Daily transfer cron job
+  - type: cron
+    name: daily-transfers
+    env: node
+    schedule: "0 21 * * *"  # 9 PM ET daily
+    buildCommand: npm install
+    startCommand: curl -X POST -H "Content-Type: application/json" $RENDER_EXTERNAL_URL/admin/run-daily-transfers
+    envVars:
+      - key: RENDER_EXTERNAL_URL
+        fromService:
+          type: web
+          name: stripe-payment-service
+          property: host
+
+# Database
+databases:
+  - name: stripe-payment-db
+    plan: starter
+    databaseName: stripe_payments
+    user: stripe_user
