@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { createShortUrl } from './url-shortener.js';
 
 /**
  * TextMagic SMS Service Integration
@@ -108,13 +109,32 @@ export async function sendPaymentLinkSMS(customerPhone, paymentUrl, options = {}
     providerName = 'your massage therapist'
   } = options;
 
-  const amountText = amount ? ` ($${(amount / 100).toFixed(2)})` : '';
-  
-  const message = `Hi ${customerName}! Your ${serviceName}${amountText} is confirmed. Pay after your massage here: ${paymentUrl}
-
-From ${providerName}`;
-
-  return await sendSMS(customerPhone, message);
+  try {
+    // Create shortened URL to save characters
+    const shortUrl = await createShortUrl(paymentUrl, 24); // Expires in 24 hours
+    
+    // Create concise message to stay under character limit
+    const amountText = amount ? ` $${(amount / 100).toFixed(2)}` : '';
+    
+    // Shortened message template
+    const message = `Hi ${customerName}! ${serviceName}${amountText} confirmed. Pay: ${shortUrl}`;
+    
+    // Check message length and truncate if needed
+    if (message.length > 400) {
+      const fallbackMessage = `Payment${amountText}: ${shortUrl}`;
+      console.log(`⚠️  Message too long (${message.length} chars), using fallback (${fallbackMessage.length} chars)`);
+      return await sendSMS(customerPhone, fallbackMessage);
+    }
+    
+    console.log(`📱 SMS (${message.length} chars): ${message}`);
+    return await sendSMS(customerPhone, message);
+    
+  } catch (error) {
+    console.error('Error in sendPaymentLinkSMS:', error);
+    // Fallback to original URL if shortening fails
+    const fallbackMessage = `Payment link: ${paymentUrl}`;
+    return await sendSMS(customerPhone, fallbackMessage);
+  }
 }
 
 /**

@@ -5,6 +5,7 @@ import { createCheckout, handleStripeWebhook, runDailyTransfers, createAccountLi
 import { sendPaymentLinkSMS, sendPaymentConfirmationSMS, testSMS } from "./textmagic.js";
 import { getAllServicePricing, getServicePricing, upsertServicePricing, createProvider } from "./db.js";
 import { syncProvidersFromMainDatabase, testProviderDatabaseConnection, getProviderFromMainDatabase } from "./provider-sync.js";
+import { getOriginalUrl, getUrlStats, initializeUrlShortenerTable } from "./url-shortener.js";
 
 // Load environment variables
 dotenv.config();
@@ -233,9 +234,13 @@ app.post("/admin/init-database", async (_req, res) => {
   try {
     const { initializeDatabase } = await import("./db.js");
     await initializeDatabase();
+    
+    // Also initialize URL shortener table
+    await initializeUrlShortenerTable();
+    
     res.json({ 
       ok: true, 
-      message: "Database initialized successfully",
+      message: "Database and URL shortener initialized successfully",
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -491,6 +496,59 @@ app.get("/admin/provider-info/:providerId", async (req, res) => {
   } catch (error) {
     console.error("Get provider info error:", error);
     res.status(500).json({ error: "Failed to get provider info" });
+  }
+});
+
+// URL Shortener redirect route
+app.get("/s/:shortCode", async (req, res) => {
+  try {
+    const { shortCode } = req.params;
+    const originalUrl = await getOriginalUrl(shortCode);
+    
+    if (!originalUrl) {
+      return res.status(404).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Link Not Found - Gold Touch Mobile</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+            .error { color: #dc3545; }
+          </style>
+        </head>
+        <body>
+          <h1 class="error">Link Not Found</h1>
+          <p>This payment link has expired or doesn't exist.</p>
+          <p>Please contact Gold Touch Mobile for assistance.</p>
+        </body>
+        </html>
+      `);
+    }
+    
+    // Redirect to the original URL
+    res.redirect(originalUrl);
+    
+  } catch (error) {
+    console.error("URL redirect error:", error);
+    res.status(500).send("Error processing redirect");
+  }
+});
+
+// Get URL statistics (optional - for debugging)
+app.get("/s/:shortCode/stats", async (req, res) => {
+  try {
+    const { shortCode } = req.params;
+    const stats = await getUrlStats(shortCode);
+    
+    if (!stats) {
+      return res.status(404).json({ error: "Short URL not found" });
+    }
+    
+    res.json(stats);
+  } catch (error) {
+    console.error("URL stats error:", error);
+    res.status(500).json({ error: "Failed to get URL stats" });
   }
 });
 
