@@ -21,7 +21,7 @@ export async function createCheckout({ providerId, productName, amountCents, all
         currency: "usd",
         unit_amount: amountCents,
         product_data: {
-          name: productName
+          name: productName || "Gold Touch Massage Service"
         }
       },
       quantity: 1
