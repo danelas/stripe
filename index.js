@@ -494,6 +494,95 @@ app.get("/admin/provider-info/:providerId", async (req, res) => {
   }
 });
 
+// Provider onboarding completion page (Stripe redirects here)
+app.get("/providers/:providerId", async (req, res) => {
+  try {
+    const { providerId } = req.params;
+    const { done } = req.query;
+    
+    if (done === '1') {
+      // Provider completed Stripe Connect setup
+      console.log(`Provider ${providerId} completed Stripe Connect onboarding`);
+      
+      // Send success page
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Setup Complete - Gold Touch Massage</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              max-width: 600px; 
+              margin: 50px auto; 
+              padding: 20px; 
+              text-align: center;
+              background-color: #f5f5f5;
+            }
+            .success-card {
+              background: white;
+              padding: 40px;
+              border-radius: 10px;
+              box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }
+            .checkmark {
+              color: #28a745;
+              font-size: 60px;
+              margin-bottom: 20px;
+            }
+            h1 { color: #333; margin-bottom: 20px; }
+            p { color: #666; line-height: 1.6; margin-bottom: 15px; }
+            .next-steps {
+              background: #f8f9fa;
+              padding: 20px;
+              border-radius: 5px;
+              margin-top: 30px;
+              text-align: left;
+            }
+            .next-steps h3 { color: #333; margin-top: 0; }
+            .next-steps ul { padding-left: 20px; }
+            .next-steps li { margin-bottom: 10px; }
+          </style>
+        </head>
+        <body>
+          <div class="success-card">
+            <div class="checkmark">✅</div>
+            <h1>Payout Setup Complete!</h1>
+            <p><strong>Congratulations!</strong> Your automatic payout system is now active.</p>
+            <p>You'll receive payments directly to your bank account the day after customers pay for your services.</p>
+            
+            <div class="next-steps">
+              <h3>What happens next:</h3>
+              <ul>
+                <li><strong>Start accepting bookings</strong> - You're ready to receive massage appointments</li>
+                <li><strong>Customers pay after service</strong> - They'll get a payment link via SMS</li>
+                <li><strong>Daily payouts</strong> - Money appears in your bank account the next business day</li>
+                <li><strong>Email notifications</strong> - Stripe will email you about each payout</li>
+              </ul>
+            </div>
+            
+            <p style="margin-top: 30px; font-size: 14px; color: #888;">
+              Questions? Contact Gold Touch Massage support.
+            </p>
+          </div>
+        </body>
+        </html>
+      `);
+    } else {
+      // Regular provider page (not completion)
+      res.json({ 
+        providerId, 
+        message: "Provider page", 
+        setupComplete: false 
+      });
+    }
+  } catch (error) {
+    console.error("Provider page error:", error);
+    res.status(500).json({ error: "Failed to load provider page" });
+  }
+});
+
 // Error handling middleware
 app.use((error, req, res, next) => {
   console.error("Unhandled error:", error);
