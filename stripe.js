@@ -39,34 +39,10 @@ export async function createCheckout({ providerId, productName, amountCents, all
         service_breakdown: serviceBreakdown ? JSON.stringify(serviceBreakdown) : null
       }
     };
-    // Enable tips with preset amounts
-    if (allowTips) {
-      sessionConfig.invoice_creation = {
-        enabled: true,
-        invoice_data: {
-          description: `${productName} - Gold Touch Massage`,
-          metadata: {
-            provider_id: providerId
-          }
-        }
-      };
-
-      // Add tip line item with adjustable quantity
-      lineItems.push({
-        price_data: {
-          currency: "usd",
-          unit_amount: 500, // $5 increments
-          product_data: {
-            name: "Tip for your massage therapist"
-          }
-        },
-        quantity: 0, // Start with no tip
-        adjustable_quantity: {
-          enabled: true,
-          minimum: 0, // Allow no tip
-          maximum: 20 // Max $100 tip
-        }
-      });
+    // Tips temporarily disabled due to Stripe quantity validation
+    // TODO: Re-implement tips with proper quantity handling
+    if (false) { // Completely disable tips for now
+      // Tip code removed temporarily
     }
     const session = await stripe.checkout.sessions.create(sessionConfig);
 
