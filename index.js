@@ -94,7 +94,8 @@ app.post("/checkout", express.json(), async (req, res) => {
       providerId, 
       productName: displayName, 
       amountCents: finalAmount,
-      serviceBreakdown 
+      serviceBreakdown,
+      allowTips: false // Explicitly disable tips
     });
 
     res.json({ 
@@ -177,7 +178,8 @@ app.post("/checkout-with-sms", express.json(), async (req, res) => {
       providerId, 
       productName: displayName, 
       amountCents: finalAmount,
-      serviceBreakdown 
+      serviceBreakdown,
+      allowTips: false // Explicitly disable tips
     });
 
     // Send SMS with payment link
