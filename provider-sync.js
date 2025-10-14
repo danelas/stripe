@@ -16,13 +16,12 @@ export async function syncProvidersFromMainDatabase() {
   try {
     console.log('Connecting to your provider database...');
     
-    // Query your existing provider database
+    // Query your existing provider database (email column may not exist)
     const result = await providerPool.query(`
       SELECT 
         id,
         name,
         phone,
-        email,
         created_at
       FROM providers 
       WHERE active = true OR active IS NULL
@@ -42,7 +41,7 @@ export async function syncProvidersFromMainDatabase() {
       try {
         // Create provider in payment service database
         const syncedProvider = await createProvider(
-          provider.email || `${provider.id}@placeholder.com`, // Email required
+          `${provider.id}@goldtouchmobile.com`, // Generate email since column doesn't exist
           provider.id,
           provider.name,
           provider.phone
