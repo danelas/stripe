@@ -143,7 +143,7 @@ app.post("/checkout", express.json(), async (req, res) => {
       productName: displayName, 
       amountCents: finalAmount,
       serviceBreakdown,
-      allowTips: true // Enable tips
+      allowTips: true // Enable tips with fixed minimum values
     });
 
     // Create shortened URL for SMS
@@ -228,7 +228,7 @@ app.post("/checkout-with-sms", express.json(), async (req, res) => {
       productName: displayName, 
       amountCents: finalAmount,
       serviceBreakdown,
-      allowTips: true // Enable tips
+      allowTips: true // Enable tips with fixed minimum values
     });
 
     // Create shortened URL (NO SMS SENDING - that's handled by your Main SMS System)

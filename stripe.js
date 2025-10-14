@@ -29,8 +29,8 @@ export async function createCheckout({ providerId, productName, amountCents, all
       ...(adjustableAmount && {
         adjustable_quantity: {
           enabled: true,
-          minimum: Math.ceil(adjustableAmount.minimum / amountCents),
-          maximum: Math.ceil(adjustableAmount.maximum / amountCents)
+          minimum: Math.max(1, Math.ceil(adjustableAmount.minimum / amountCents)),
+          maximum: Math.max(1, Math.ceil(adjustableAmount.maximum / amountCents))
         }
       })
     }];
@@ -50,11 +50,11 @@ export async function createCheckout({ providerId, productName, amountCents, all
     
     // Add tip options if enabled
     if (allowTips) {
-      // Add custom tip amounts (15%, 20%, 25%)
+      // Add custom tip amounts (15%, 20%, 25%) - ensure minimum of 1 cent
       const tipAmounts = [
-        Math.round(amountCents * 0.15), // 15%
-        Math.round(amountCents * 0.20), // 20% 
-        Math.round(amountCents * 0.25)  // 25%
+        Math.max(1, Math.round(amountCents * 0.15)), // 15%
+        Math.max(1, Math.round(amountCents * 0.20)), // 20% 
+        Math.max(1, Math.round(amountCents * 0.25))  // 25%
       ];
       
       sessionConfig.custom_text = {
@@ -75,7 +75,7 @@ export async function createCheckout({ providerId, productName, amountCents, all
         quantity: 0, // Optional tip
         adjustable_quantity: {
           enabled: true,
-          minimum: 0,
+          minimum: 1,
           maximum: 1
         }
       });
@@ -91,7 +91,7 @@ export async function createCheckout({ providerId, productName, amountCents, all
         quantity: 0, // Optional tip
         adjustable_quantity: {
           enabled: true,
-          minimum: 0,
+          minimum: 1,
           maximum: 1
         }
       });
@@ -107,7 +107,7 @@ export async function createCheckout({ providerId, productName, amountCents, all
         quantity: 0, // Optional tip
         adjustable_quantity: {
           enabled: true,
-          minimum: 0,
+          minimum: 1,
           maximum: 1
         }
       });
