@@ -33,6 +33,52 @@ app.get("/health", (_req, res) => {
   });
 });
 
+// Create open amount checkout (temporary workaround for pricing issues)
+app.post("/checkout-open-amount", express.json(), async (req, res) => {
+  try {
+    const { 
+      providerId, 
+      serviceName = "Service Payment",
+      minimumAmount = 1000, // $10 minimum
+      maximumAmount = 50000, // $500 maximum
+      defaultAmount = 5000   // $50 default
+    } = req.body;
+
+    if (!providerId) {
+      return res.status(400).json({ error: "providerId is required" });
+    }
+
+    // Create checkout with adjustable amount
+    const stripeUrl = await createCheckout({ 
+      providerId, 
+      productName: `${serviceName} - Enter Your Amount`, 
+      amountCents: defaultAmount,
+      serviceBreakdown: [],
+      allowTips: false, // Tips not needed since amount is adjustable
+      adjustableAmount: {
+        minimum: minimumAmount,
+        maximum: maximumAmount
+      }
+    });
+
+    // Create shortened URL
+    const shortUrl = await createShortUrl(stripeUrl, 24);
+
+    res.json({ 
+      url: shortUrl,
+      originalUrl: stripeUrl,
+      serviceName: `${serviceName} (Custom Amount)`,
+      defaultAmount: defaultAmount,
+      minimumAmount: minimumAmount,
+      maximumAmount: maximumAmount,
+      note: "Customer can adjust the amount at checkout"
+    });
+  } catch (error) {
+    console.error("Open amount checkout error:", error);
+    res.status(500).json({ error: "Failed to create open amount checkout session" });
+  }
+});
+
 // Create checkout session for a provider (with automatic pricing lookup)
 app.post("/checkout", express.json(), async (req, res) => {
   try {

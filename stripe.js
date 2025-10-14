@@ -14,7 +14,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET);
 /**
  * Create a Stripe Checkout session for a provider with tip option
  */
-export async function createCheckout({ providerId, productName, amountCents, allowTips = true, serviceBreakdown = null }) {
+export async function createCheckout({ providerId, productName, amountCents, allowTips = true, serviceBreakdown = null, adjustableAmount = null }) {
   try {
     const lineItems = [{
       price_data: {
@@ -24,7 +24,15 @@ export async function createCheckout({ providerId, productName, amountCents, all
           name: productName || "Gold Touch Massage Service"
         }
       },
-      quantity: 1
+      quantity: 1,
+      // Add adjustable quantity for open amounts
+      ...(adjustableAmount && {
+        adjustable_quantity: {
+          enabled: true,
+          minimum: Math.ceil(adjustableAmount.minimum / amountCents),
+          maximum: Math.ceil(adjustableAmount.maximum / amountCents)
+        }
+      })
     }];
 
     // Add tip options if enabled
