@@ -508,6 +508,54 @@ app.get("/admin/service-names", async (_req, res) => {
   }
 });
 
+// Debug service name lookup
+app.post("/admin/debug-service", express.json(), async (req, res) => {
+  try {
+    const { serviceName } = req.body;
+    
+    if (!serviceName) {
+      return res.status(400).json({ error: "serviceName is required" });
+    }
+    
+    console.log(`=== DEBUGGING SERVICE LOOKUP ===`);
+    console.log(`Looking for service: "${serviceName}"`);
+    console.log(`Service length: ${serviceName.length}`);
+    console.log(`Service bytes: ${Buffer.from(serviceName).toString('hex')}`);
+    
+    // Get all services for comparison
+    const allServices = await getAllServicePricing();
+    console.log(`Total services in database: ${allServices.length}`);
+    
+    // Try exact match
+    const exactMatch = await getServicePricing(serviceName);
+    console.log(`Exact match found: ${!!exactMatch}`);
+    
+    // Try case-insensitive match
+    const caseInsensitiveMatch = allServices.find(s => 
+      s.service_name.toLowerCase() === serviceName.toLowerCase()
+    );
+    console.log(`Case-insensitive match found: ${!!caseInsensitiveMatch}`);
+    
+    // Show similar services
+    const similarServices = allServices.filter(s => 
+      s.service_name.includes(serviceName.substring(0, 10)) ||
+      serviceName.includes(s.service_name.substring(0, 10))
+    );
+    
+    res.json({
+      searchedFor: serviceName,
+      exactMatch: exactMatch,
+      caseInsensitiveMatch: caseInsensitiveMatch,
+      similarServices: similarServices.map(s => s.service_name),
+      allServices: allServices.map(s => s.service_name)
+    });
+    
+  } catch (error) {
+    console.error("Debug service error:", error);
+    res.status(500).json({ error: "Failed to debug service", details: error.message });
+  }
+});
+
 // Update service pricing
 app.post("/admin/pricing", express.json(), async (req, res) => {
   try {
