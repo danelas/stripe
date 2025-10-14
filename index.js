@@ -568,31 +568,53 @@ app.post("/admin/debug-service", express.json(), async (req, res) => {
     console.log(`Service length: ${serviceName.length}`);
     console.log(`Service bytes: ${Buffer.from(serviceName).toString('hex')}`);
     
+    // Test normalization function
+    const { normalizeServiceName } = await import("./db.js");
+    const normalizedSearch = serviceName
+      .replace(/[·•●◦–—]/g, '-')
+      .replace(/[""]/g, '"')
+      .replace(/['']/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+    
+    console.log(`Normalized search: "${normalizedSearch}"`);
+    
     // Get all services for comparison
     const allServices = await getAllServicePricing();
     console.log(`Total services in database: ${allServices.length}`);
+    
+    // Test normalization on database services
+    const normalizedDbServices = allServices.map(s => ({
+      original: s.service_name,
+      normalized: s.service_name
+        .replace(/[·•●◦–—]/g, '-')
+        .replace(/[""]/g, '"')
+        .replace(/['']/g, "'")
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase(),
+      matches: (s.service_name
+        .replace(/[·•●◦–—]/g, '-')
+        .replace(/[""]/g, '"')
+        .replace(/['']/g, "'")
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase()) === normalizedSearch
+    }));
     
     // Try exact match
     const exactMatch = await getServicePricing(serviceName);
     console.log(`Exact match found: ${!!exactMatch}`);
     
-    // Try case-insensitive match
-    const caseInsensitiveMatch = allServices.find(s => 
-      s.service_name.toLowerCase() === serviceName.toLowerCase()
-    );
-    console.log(`Case-insensitive match found: ${!!caseInsensitiveMatch}`);
-    
-    // Show similar services
-    const similarServices = allServices.filter(s => 
-      s.service_name.includes(serviceName.substring(0, 10)) ||
-      serviceName.includes(s.service_name.substring(0, 10))
-    );
+    const matchingServices = normalizedDbServices.filter(s => s.matches);
     
     res.json({
       searchedFor: serviceName,
+      normalizedSearch: normalizedSearch,
       exactMatch: exactMatch,
-      caseInsensitiveMatch: caseInsensitiveMatch,
-      similarServices: similarServices.map(s => s.service_name),
+      normalizedDbServices: normalizedDbServices,
+      matchingServices: matchingServices,
       allServices: allServices.map(s => s.service_name)
     });
     
