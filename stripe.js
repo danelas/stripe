@@ -50,65 +50,26 @@ export async function createCheckout({ providerId, productName, amountCents, all
     
     // Add tip options if enabled
     if (allowTips) {
-      // Add custom tip amounts (15%, 20%, 25%) - ensure minimum of 1 cent
-      const tipAmounts = [
-        Math.max(1, Math.round(amountCents * 0.15)), // 15%
-        Math.max(1, Math.round(amountCents * 0.20)), // 20% 
-        Math.max(1, Math.round(amountCents * 0.25))  // 25%
-      ];
-      
       sessionConfig.custom_text = {
         submit: {
           message: "Thank you for supporting our massage therapists!"
         }
       };
       
-      // Add tip line items
+      // Add custom tip amount - customer can enter any amount
       sessionConfig.line_items.push({
         price_data: {
           currency: "usd",
-          unit_amount: tipAmounts[0],
+          unit_amount: 100, // $1.00 base unit for tip
           product_data: {
-            name: `Tip (15%) - Thank you for supporting ${productName}!`
+            name: "Tip - Thank you for supporting our therapists!"
           }
         },
-        quantity: 0, // Optional tip
+        quantity: 0, // Optional tip - starts at $0
         adjustable_quantity: {
           enabled: true,
           minimum: 1,
-          maximum: 1
-        }
-      });
-      
-      sessionConfig.line_items.push({
-        price_data: {
-          currency: "usd",
-          unit_amount: tipAmounts[1],
-          product_data: {
-            name: `Tip (20%) - Thank you for supporting ${productName}!`
-          }
-        },
-        quantity: 0, // Optional tip
-        adjustable_quantity: {
-          enabled: true,
-          minimum: 1,
-          maximum: 1
-        }
-      });
-      
-      sessionConfig.line_items.push({
-        price_data: {
-          currency: "usd",
-          unit_amount: tipAmounts[2],
-          product_data: {
-            name: `Tip (25%) - Thank you for supporting ${productName}!`
-          }
-        },
-        quantity: 0, // Optional tip
-        adjustable_quantity: {
-          enabled: true,
-          minimum: 1,
-          maximum: 1
+          maximum: 1000 // Allow up to $1000 tip (100 * $1.00)
         }
       });
     }
