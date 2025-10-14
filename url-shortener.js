@@ -69,7 +69,14 @@ export async function createShortUrl(originalUrl, expiresHours = 24) {
 
   } catch (error) {
     console.error('Error creating short URL:', error);
+    
+    // If table doesn't exist, suggest initialization
+    if (error.code === '42P01') {
+      console.error('❌ short_urls table does not exist. Please call /admin/init-database endpoint first.');
+    }
+    
     // Return original URL if shortening fails
+    console.log('⚠️  Falling back to original URL due to shortener error');
     return originalUrl;
   }
 }

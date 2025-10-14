@@ -233,16 +233,34 @@ app.post("/admin/init-database", async (_req, res) => {
     await initializeDatabase();
     
     // Also initialize URL shortener table
-    await initializeUrlShortenerTable();
+    const shortenerResult = await initializeUrlShortenerTable();
     
     res.json({ 
       ok: true, 
       message: "Database and URL shortener initialized successfully",
+      shortenerTableCreated: shortenerResult,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
     console.error("Database initialization error:", error);
-    res.status(500).json({ error: "Failed to initialize database" });
+    res.status(500).json({ error: "Failed to initialize database", details: error.message });
+  }
+});
+
+// Initialize just the URL shortener table (quick fix)
+app.post("/admin/init-url-shortener", async (_req, res) => {
+  try {
+    const result = await initializeUrlShortenerTable();
+    
+    res.json({ 
+      ok: true, 
+      message: "URL shortener table initialized successfully",
+      tableCreated: result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("URL shortener initialization error:", error);
+    res.status(500).json({ error: "Failed to initialize URL shortener table", details: error.message });
   }
 });
 
