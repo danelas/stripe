@@ -256,10 +256,8 @@ function normalizeServiceName(serviceName) {
   if (!serviceName) return '';
   
   return serviceName
-    // Normalize bullet points: · • ● ◦ → ·
-    .replace(/[·•●◦]/g, '·')
-    // Normalize dashes: – — - → -
-    .replace(/[–—]/g, '-')
+    // Normalize ALL bullet-like characters and dashes to regular dash
+    .replace(/[·•●◦–—]/g, '-')
     // Normalize quotes: " " ' ' → " '
     .replace(/[""]/g, '"')
     .replace(/['']/g, "'")
