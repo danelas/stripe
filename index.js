@@ -5,7 +5,7 @@ import { createCheckout, handleStripeWebhook, runDailyTransfers, createAccountLi
 import { sendPaymentLinkSMS, sendPaymentConfirmationSMS, testSMS } from "./textmagic.js";
 import { getAllServicePricing, getServicePricing, upsertServicePricing, createProvider } from "./db.js";
 import { syncProvidersFromMainDatabase, testProviderDatabaseConnection, getProviderFromMainDatabase } from "./provider-sync.js";
-import { getOriginalUrl, getUrlStats, initializeUrlShortenerTable } from "./url-shortener.js";
+import { getOriginalUrl, getUrlStats, initializeUrlShortenerTable, createShortUrl } from "./url-shortener.js";
 
 // Load environment variables
 dotenv.config();
@@ -92,7 +92,7 @@ app.post("/checkout", express.json(), async (req, res) => {
       ? `${serviceName} + ${addOns.join(' + ')}`
       : serviceName;
 
-    const url = await createCheckout({ 
+    const stripeUrl = await createCheckout({ 
       providerId, 
       productName: displayName, 
       amountCents: finalAmount,
@@ -100,8 +100,12 @@ app.post("/checkout", express.json(), async (req, res) => {
       allowTips: false // Explicitly disable tips
     });
 
+    // Create shortened URL for SMS
+    const shortUrl = await createShortUrl(stripeUrl, 24); // Expires in 24 hours
+
     res.json({ 
-      url, 
+      url: shortUrl, // Return shortened URL
+      originalUrl: stripeUrl, // Include original for reference
       serviceName: displayName, 
       amountCents: finalAmount,
       breakdown: serviceBreakdown,
@@ -113,7 +117,8 @@ app.post("/checkout", express.json(), async (req, res) => {
   }
 });
 
-// Create checkout and send SMS to customer (with automatic pricing lookup and add-ons)
+// Legacy endpoint - kept for backward compatibility but now just returns shortened URL
+// Your Main SMS System should use /checkout endpoint instead
 app.post("/checkout-with-sms", express.json(), async (req, res) => {
   try {
     const { 
@@ -121,17 +126,13 @@ app.post("/checkout-with-sms", express.json(), async (req, res) => {
       serviceName,
       addOns = [], // Array of add-on service names
       amountCents, // Optional override
-      customerPhone,
-      customerName = "Customer",
-      providerName = "your massage therapist"
+      customerPhone, // Not used anymore, but kept for compatibility
+      customerName = "Customer", // Not used anymore
+      providerName = "your massage therapist" // Not used anymore
     } = req.body;
 
     if (!providerId) {
       return res.status(400).json({ error: "providerId is required" });
-    }
-
-    if (!customerPhone) {
-      return res.status(400).json({ error: "customerPhone is required" });
     }
 
     if (!serviceName && !amountCents) {
@@ -176,7 +177,7 @@ app.post("/checkout-with-sms", express.json(), async (req, res) => {
       : serviceName;
 
     // Create checkout session
-    const url = await createCheckout({ 
+    const stripeUrl = await createCheckout({ 
       providerId, 
       productName: displayName, 
       amountCents: finalAmount,
@@ -184,25 +185,21 @@ app.post("/checkout-with-sms", express.json(), async (req, res) => {
       allowTips: false // Explicitly disable tips
     });
 
-    // Send SMS with payment link
-    const smsResult = await sendPaymentLinkSMS(customerPhone, url, {
-      customerName,
-      serviceName: displayName,
-      amount: finalAmount,
-      providerName
-    });
+    // Create shortened URL (NO SMS SENDING - that's handled by your Main SMS System)
+    const shortUrl = await createShortUrl(stripeUrl, 24); // Expires in 24 hours
 
     res.json({ 
-      url,
+      url: shortUrl, // Shortened URL for SMS
+      originalUrl: stripeUrl, // Original Stripe URL for reference
       serviceName: displayName,
       amountCents: finalAmount,
       breakdown: serviceBreakdown,
       totalServices: 1 + addOns.length,
-      sms: smsResult
+      note: "SMS sending should be handled by your Main SMS System using this shortened URL"
     });
   } catch (error) {
-    console.error("Checkout with SMS error:", error);
-    res.status(500).json({ error: "Failed to create checkout session or send SMS" });
+    console.error("Checkout error:", error);
+    res.status(500).json({ error: "Failed to create checkout session" });
   }
 });
 
