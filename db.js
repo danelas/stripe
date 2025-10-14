@@ -250,15 +250,69 @@ function generateProviderId() {
 }
 
 /**
- * Get service pricing by name
+ * Normalize service name for fuzzy matching
+ */
+function normalizeServiceName(serviceName) {
+  if (!serviceName) return '';
+  
+  return serviceName
+    // Normalize bullet points: · • ● ◦ → ·
+    .replace(/[·•●◦]/g, '·')
+    // Normalize dashes: – — - → -
+    .replace(/[–—]/g, '-')
+    // Normalize quotes: " " ' ' → " '
+    .replace(/[""]/g, '"')
+    .replace(/['']/g, "'")
+    // Normalize spaces (remove extra spaces)
+    .replace(/\s+/g, ' ')
+    // Trim whitespace
+    .trim()
+    // Convert to lowercase for comparison
+    .toLowerCase();
+}
+
+/**
+ * Get service pricing by name with fuzzy matching
  */
 export async function getServicePricing(serviceName) {
   try {
-    const result = await pool.query(
+    // First try exact match
+    let result = await pool.query(
       'SELECT * FROM service_pricing WHERE service_name = $1',
       [serviceName]
     );
-    return result.rows[0] || null;
+    
+    if (result.rows.length > 0) {
+      console.log(`✅ Exact match found for: "${serviceName}"`);
+      return result.rows[0];
+    }
+    
+    // If no exact match, try fuzzy matching
+    console.log(`⚠️ No exact match for: "${serviceName}", trying fuzzy match...`);
+    
+    const normalizedSearch = normalizeServiceName(serviceName);
+    console.log(`Normalized search: "${normalizedSearch}"`);
+    
+    // Get all services and find fuzzy match
+    const allServices = await pool.query('SELECT * FROM service_pricing');
+    
+    for (const service of allServices.rows) {
+      const normalizedService = normalizeServiceName(service.service_name);
+      
+      if (normalizedService === normalizedSearch) {
+        console.log(`✅ Fuzzy match found: "${service.service_name}" matches "${serviceName}"`);
+        return service;
+      }
+    }
+    
+    // If still no match, show available options
+    console.log(`❌ No match found for: "${serviceName}"`);
+    console.log(`Available services:`);
+    allServices.rows.forEach(s => {
+      console.log(`  - "${s.service_name}"`);
+    });
+    
+    return null;
   } catch (error) {
     console.error('Error getting service pricing:', error);
     throw error;
