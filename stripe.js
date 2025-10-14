@@ -65,11 +65,11 @@ export async function createCheckout({ providerId, productName, amountCents, all
             name: "Tip - Thank you for supporting our therapists!"
           }
         },
-        quantity: 0, // Optional tip - starts at $0
+        quantity: 1, // Start with $1 tip (customer can adjust to 0 or more)
         adjustable_quantity: {
           enabled: true,
-          minimum: 1,
-          maximum: 1000 // Allow up to $1000 tip (100 * $1.00)
+          minimum: 0, // Allow $0 tip
+          maximum: 1000 // Allow up to $1000 tip
         }
       });
     }
