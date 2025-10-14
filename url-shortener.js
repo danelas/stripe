@@ -65,7 +65,7 @@ export async function createShortUrl(originalUrl, expiresHours = 24) {
     );
 
     // Return the shortened URL
-    return `https://goldtouchmobile.com/s/${shortCode}`;
+    return `https://stripe-45lh.onrender.com/s/${shortCode}`;
 
   } catch (error) {
     console.error('Error creating short URL:', error);
