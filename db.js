@@ -51,6 +51,21 @@ export async function getProviderById(id) {
 }
 
 /**
+ * Get all providers
+ */
+export async function getAllProviders() {
+  try {
+    const result = await pool.query(
+      'SELECT id, email, name, phone, stripe_account_id, created_at FROM providers ORDER BY id'
+    );
+    return result.rows;
+  } catch (error) {
+    console.error('Error getting all providers:', error);
+    throw error;
+  }
+}
+
+/**
  * Ensure a Stripe Connect account exists for the provider
  */
 export async function ensureConnectAccount(provider) {

@@ -39,10 +39,70 @@ export async function createCheckout({ providerId, productName, amountCents, all
         service_breakdown: serviceBreakdown ? JSON.stringify(serviceBreakdown) : null
       }
     };
-    // Tips temporarily disabled due to Stripe quantity validation
-    // TODO: Re-implement tips with proper quantity handling
-    if (false) { // Completely disable tips for now
-      // Tip code removed temporarily
+    
+    // Add tip options if enabled
+    if (allowTips) {
+      // Add custom tip amounts (15%, 20%, 25%)
+      const tipAmounts = [
+        Math.round(amountCents * 0.15), // 15%
+        Math.round(amountCents * 0.20), // 20% 
+        Math.round(amountCents * 0.25)  // 25%
+      ];
+      
+      sessionConfig.custom_text = {
+        submit: {
+          message: "Thank you for supporting our massage therapists!"
+        }
+      };
+      
+      // Add tip line items
+      sessionConfig.line_items.push({
+        price_data: {
+          currency: "usd",
+          unit_amount: tipAmounts[0],
+          product_data: {
+            name: `Tip (15%) - Thank you for supporting ${productName}!`
+          }
+        },
+        quantity: 0, // Optional tip
+        adjustable_quantity: {
+          enabled: true,
+          minimum: 0,
+          maximum: 1
+        }
+      });
+      
+      sessionConfig.line_items.push({
+        price_data: {
+          currency: "usd",
+          unit_amount: tipAmounts[1],
+          product_data: {
+            name: `Tip (20%) - Thank you for supporting ${productName}!`
+          }
+        },
+        quantity: 0, // Optional tip
+        adjustable_quantity: {
+          enabled: true,
+          minimum: 0,
+          maximum: 1
+        }
+      });
+      
+      sessionConfig.line_items.push({
+        price_data: {
+          currency: "usd",
+          unit_amount: tipAmounts[2],
+          product_data: {
+            name: `Tip (25%) - Thank you for supporting ${productName}!`
+          }
+        },
+        quantity: 0, // Optional tip
+        adjustable_quantity: {
+          enabled: true,
+          minimum: 0,
+          maximum: 1
+        }
+      });
     }
     const session = await stripe.checkout.sessions.create(sessionConfig);
 

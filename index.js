@@ -97,7 +97,7 @@ app.post("/checkout", express.json(), async (req, res) => {
       productName: displayName, 
       amountCents: finalAmount,
       serviceBreakdown,
-      allowTips: false // Explicitly disable tips
+      allowTips: true // Enable tips
     });
 
     // Create shortened URL for SMS
@@ -182,7 +182,7 @@ app.post("/checkout-with-sms", express.json(), async (req, res) => {
       productName: displayName, 
       amountCents: finalAmount,
       serviceBreakdown,
-      allowTips: false // Explicitly disable tips
+      allowTips: true // Enable tips
     });
 
     // Create shortened URL (NO SMS SENDING - that's handled by your Main SMS System)
@@ -223,6 +223,141 @@ app.post("/provider/account-link", express.json(), async (req, res) => {
   } catch (error) {
     console.error("Account link error:", error);
     res.status(500).json({ error: "Failed to create account link" });
+  }
+});
+
+// Create personalized onboarding link with provider ID embedded
+app.post("/provider/create-onboarding-link", express.json(), async (req, res) => {
+  try {
+    const { providerId, email, name, phone } = req.body;
+
+    if (!providerId) {
+      return res.status(400).json({ error: "providerId is required" });
+    }
+
+    // Create or update provider in database first
+    const provider = await createProvider(email, providerId, name, phone);
+    
+    // Create personalized onboarding URL
+    const onboardingUrl = `https://stripe-45lh.onrender.com/provider/onboard/${providerId}`;
+    
+    res.json({ 
+      onboardingUrl,
+      providerId,
+      message: "Send this personalized link to the provider"
+    });
+  } catch (error) {
+    console.error("Create onboarding link error:", error);
+    res.status(500).json({ error: "Failed to create onboarding link" });
+  }
+});
+
+// Provider onboarding page with embedded ID
+app.get("/provider/onboard/:providerId", async (req, res) => {
+  try {
+    const { providerId } = req.params;
+    
+    // Get provider info
+    const provider = await getProviderById(providerId);
+    if (!provider) {
+      return res.status(404).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Provider Not Found - Gold Touch Mobile</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+            .error { color: #dc3545; }
+          </style>
+        </head>
+        <body>
+          <h1 class="error">Provider Not Found</h1>
+          <p>Provider ID '${providerId}' not found in our system.</p>
+          <p>Please contact Gold Touch Mobile for assistance.</p>
+        </body>
+        </html>
+      `);
+    }
+
+    // If provider already has Stripe account, show completion page
+    if (provider.stripe_account_id) {
+      return res.redirect(`/providers/${providerId}?done=1`);
+    }
+
+    // Create Stripe Connect account link with provider ID in metadata
+    const accountLink = await createAccountLink(providerId);
+    
+    // Show onboarding page with provider info
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Setup Payments - Gold Touch Mobile</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          body { 
+            font-family: Arial, sans-serif; 
+            max-width: 600px; 
+            margin: 50px auto; 
+            padding: 20px; 
+            background-color: #f5f5f5;
+          }
+          .onboard-card {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+          }
+          .provider-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            text-align: left;
+          }
+          .btn {
+            background: #28a745;
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 18px;
+            display: inline-block;
+            margin-top: 20px;
+          }
+          .btn:hover { background: #218838; }
+        </style>
+      </head>
+      <body>
+        <div class="onboard-card">
+          <h1>🏦 Setup Your Payments</h1>
+          <p>Hi! You've been invited to set up automatic payments with Gold Touch Mobile.</p>
+          
+          <div class="provider-info">
+            <h3>Your Provider Information:</h3>
+            <p><strong>Provider ID:</strong> ${providerId}</p>
+            <p><strong>Email:</strong> ${provider.email || 'Not provided'}</p>
+            <p><strong>Name:</strong> ${provider.name || 'Not provided'}</p>
+          </div>
+          
+          <p>Click below to connect your bank account and start receiving payments:</p>
+          
+          <a href="${accountLink}" class="btn">🚀 Setup My Payments</a>
+          
+          <p style="margin-top: 30px; font-size: 14px; color: #666;">
+            This will take you to Stripe to securely connect your bank account.<br>
+            You'll receive payments automatically after each service.
+          </p>
+        </div>
+      </body>
+      </html>
+    `);
+    
+  } catch (error) {
+    console.error("Provider onboarding error:", error);
+    res.status(500).send("Error loading onboarding page");
   }
 });
 
@@ -350,6 +485,26 @@ app.get("/admin/pricing", async (_req, res) => {
   } catch (error) {
     console.error("Get pricing error:", error);
     res.status(500).json({ error: "Failed to get pricing" });
+  }
+});
+
+// Get service names only (for FluentForms comparison)
+app.get("/admin/service-names", async (_req, res) => {
+  try {
+    const pricing = await getAllServicePricing();
+    const serviceNames = pricing.map(p => ({
+      serviceName: p.service_name,
+      price: `$${(p.total_amount_cents / 100).toFixed(2)}`
+    }));
+    
+    res.json({ 
+      serviceNames,
+      count: serviceNames.length,
+      message: "These are the exact service names in your Stripe database. Your FluentForms must use these exact names."
+    });
+  } catch (error) {
+    console.error("Get service names error:", error);
+    res.status(500).json({ error: "Failed to get service names" });
   }
 });
 
@@ -511,6 +666,43 @@ app.get("/admin/provider-info/:providerId", async (req, res) => {
   } catch (error) {
     console.error("Get provider info error:", error);
     res.status(500).json({ error: "Failed to get provider info" });
+  }
+});
+
+// Generate onboarding links for all providers from main database
+app.post("/admin/generate-all-onboarding-links", async (req, res) => {
+  try {
+    // Sync providers from main database first
+    const syncResult = await syncProvidersFromMainDatabase();
+    
+    if (!syncResult.success) {
+      return res.status(500).json({ error: "Failed to sync providers from main database" });
+    }
+    
+    // Get all providers
+    const { getAllProviders } = await import("./db.js");
+    const providers = await getAllProviders();
+    
+    // Generate onboarding links for each provider
+    const onboardingLinks = providers.map(provider => ({
+      providerId: provider.id,
+      name: provider.name,
+      email: provider.email,
+      phone: provider.phone,
+      onboardingUrl: `https://stripe-45lh.onrender.com/provider/onboard/${provider.id}`,
+      hasStripeAccount: !!provider.stripe_account_id
+    }));
+    
+    res.json({
+      success: true,
+      totalProviders: providers.length,
+      onboardingLinks,
+      message: "Send these personalized links to your providers"
+    });
+    
+  } catch (error) {
+    console.error("Generate onboarding links error:", error);
+    res.status(500).json({ error: "Failed to generate onboarding links" });
   }
 });
 
