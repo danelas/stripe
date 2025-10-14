@@ -3,7 +3,16 @@
  * Creates short URLs to reduce SMS character count
  */
 
-import { query } from './db.js';
+import pg from 'pg';
+const { Pool } = pg;
+
+// Use the same database pool as the main app
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? {
+    rejectUnauthorized: false
+  } : false,
+});
 
 /**
  * Generate a random short code
@@ -31,12 +40,12 @@ export async function createShortUrl(originalUrl, expiresHours = 24) {
       shortCode = generateShortCode();
       attempts++;
       
-      const existing = await query(
-        'SELECT id FROM short_urls WHERE short_code = ?',
+      const existing = await pool.query(
+        'SELECT id FROM short_urls WHERE short_code = $1',
         [shortCode]
       );
       
-      if (existing.length === 0) break;
+      if (existing.rows.length === 0) break;
       
       if (attempts >= maxAttempts) {
         shortCode = generateShortCode(6); // Use longer code if needed
@@ -49,9 +58,9 @@ export async function createShortUrl(originalUrl, expiresHours = 24) {
     expiresAt.setHours(expiresAt.getHours() + expiresHours);
 
     // Insert into database
-    await query(
+    await pool.query(
       `INSERT INTO short_urls (short_code, original_url, expires_at, created_at) 
-       VALUES (?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4)`,
       [shortCode, originalUrl, expiresAt.toISOString(), new Date().toISOString()]
     );
 
@@ -70,23 +79,23 @@ export async function createShortUrl(originalUrl, expiresHours = 24) {
  */
 export async function getOriginalUrl(shortCode) {
   try {
-    const results = await query(
+    const results = await pool.query(
       `SELECT original_url, expires_at FROM short_urls 
-       WHERE short_code = ? AND (expires_at IS NULL OR expires_at > ?)`,
+       WHERE short_code = $1 AND (expires_at IS NULL OR expires_at > $2)`,
       [shortCode, new Date().toISOString()]
     );
 
-    if (results.length === 0) {
+    if (results.rows.length === 0) {
       return null; // URL not found or expired
     }
 
     // Increment click counter
-    await query(
-      'UPDATE short_urls SET clicks = clicks + 1 WHERE short_code = ?',
+    await pool.query(
+      'UPDATE short_urls SET clicks = clicks + 1 WHERE short_code = $1',
       [shortCode]
     );
 
-    return results[0].original_url;
+    return results.rows[0].original_url;
 
   } catch (error) {
     console.error('Error getting original URL:', error);
@@ -99,13 +108,13 @@ export async function getOriginalUrl(shortCode) {
  */
 export async function getUrlStats(shortCode) {
   try {
-    const results = await query(
+    const results = await pool.query(
       `SELECT short_code, original_url, clicks, created_at, expires_at 
-       FROM short_urls WHERE short_code = ?`,
+       FROM short_urls WHERE short_code = $1`,
       [shortCode]
     );
 
-    return results.length > 0 ? results[0] : null;
+    return results.rows.length > 0 ? results.rows[0] : null;
 
   } catch (error) {
     console.error('Error getting URL stats:', error);
@@ -118,13 +127,13 @@ export async function getUrlStats(shortCode) {
  */
 export async function cleanupExpiredUrls() {
   try {
-    const result = await query(
-      'DELETE FROM short_urls WHERE expires_at IS NOT NULL AND expires_at < ?',
+    const result = await pool.query(
+      'DELETE FROM short_urls WHERE expires_at IS NOT NULL AND expires_at < $1',
       [new Date().toISOString()]
     );
 
-    console.log(`Cleaned up ${result.affectedRows} expired URLs`);
-    return result.affectedRows;
+    console.log(`Cleaned up ${result.rowCount} expired URLs`);
+    return result.rowCount;
 
   } catch (error) {
     console.error('Error cleaning up expired URLs:', error);
@@ -137,19 +146,19 @@ export async function cleanupExpiredUrls() {
  */
 export async function initializeUrlShortenerTable() {
   try {
-    await query(`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS short_urls (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         short_code VARCHAR(10) UNIQUE NOT NULL,
         original_url TEXT NOT NULL,
         clicks INTEGER DEFAULT 0,
-        created_at DATETIME NOT NULL,
-        expires_at DATETIME NULL
+        created_at TIMESTAMP NOT NULL,
+        expires_at TIMESTAMP NULL
       )
     `);
 
     // Create index for faster lookups
-    await query(`
+    await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_short_code ON short_urls(short_code)
     `);
 
