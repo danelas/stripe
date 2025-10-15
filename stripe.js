@@ -319,36 +319,55 @@ export async function runDailyTransfers(date = todayInTZ(process.env.TIMEZONE ||
 }
 
 /**
- * Create an account link for provider onboarding (2025-09-30.clover compatible)
+ * Create account link for Express account onboarding (Correct Two-Step Process)
  */
 export async function createAccountLink(providerId) {
   try {
+    console.log(`🚀 Starting two-step onboarding process for provider ${providerId}`);
+    
+    // Get provider from database
     const provider = await getProviderById(providerId);
     if (!provider) {
       throw new Error(`Provider ${providerId} not found`);
     }
 
-    const accountId = await ensureConnectAccount(provider);
+    console.log(`📋 Provider found: ${provider.name || provider.email} (${provider.id})`);
 
+    // Step 1: Ensure Express account exists (creates acct_xxxxx if needed)
+    const accountId = await ensureConnectAccount(provider);
+    console.log(`✅ Express account ready: ${accountId}`);
+
+    // Step 2: Create account link for onboarding
     const baseUrl = process.env.DOMAIN || process.env.RENDER_EXTERNAL_URL || 'https://localhost:3000';
     
-    // Enhanced account link creation with latest API features
+    console.log(`🔗 Creating onboarding link for account ${accountId}`);
+    
     const accountLink = await stripe.accountLinks.create({
-      account: accountId,
-      refresh_url: `${baseUrl}/providers/${providerId}?retry=1`,
-      return_url: `${baseUrl}/providers/${providerId}?done=1`,
+      account: accountId, // The acct_xxx from step 1
+      refresh_url: `${baseUrl}/providers/${providerId}/onboarding?retry=1`,
+      return_url: `${baseUrl}/providers/${providerId}/onboarding?success=1`,
       type: "account_onboarding",
-      // Enhanced collection options for latest API
+      // Enhanced collection options for 2025-09-30.clover API
       collection_options: {
         fields: "eventually_due",
         future_requirements: "include"
       }
     });
 
-    console.log(`Created enhanced account link for provider ${providerId} (API: 2025-09-30.clover)`);
-    return accountLink.url;
+    console.log(`🎉 Onboarding link created successfully!`);
+    console.log(`🔗 Link: ${accountLink.url}`);
+    console.log(`⏰ Expires: ${new Date(accountLink.expires_at * 1000).toISOString()}`);
+    
+    // The link format will be: https://connect.stripe.com/setup/c/acct_xxx/...
+    return {
+      url: accountLink.url,
+      account_id: accountId,
+      expires_at: accountLink.expires_at,
+      provider_id: providerId,
+      created_at: new Date().toISOString()
+    };
   } catch (error) {
-    console.error("Error creating account link:", error);
+    console.error(`❌ Error in two-step onboarding for provider ${providerId}:`, error);
     throw error;
   }
 }

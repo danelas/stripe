@@ -66,37 +66,56 @@ export async function getAllProviders() {
 }
 
 /**
- * Ensure a Stripe Connect account exists for the provider
+ * Ensure a Stripe Connect Express account exists for the provider (Two-Step Process)
  */
 export async function ensureConnectAccount(provider) {
   try {
     // If provider already has a Stripe account, return it
     if (provider.stripe_account_id) {
+      console.log(`Provider ${provider.id} already has Stripe account: ${provider.stripe_account_id}`);
       return provider.stripe_account_id;
     }
 
-    // Create a new Stripe Connect account
-    const stripe = (await import('./stripe.js')).default || 
-                   (await import('stripe')).default(process.env.STRIPE_SECRET);
+    // Step 1: Create Express account (your service does this)
+    const Stripe = (await import('stripe')).default;
+    const stripe = new Stripe(process.env.STRIPE_SECRET, {
+      apiVersion: '2025-09-30.clover',
+    });
+    
+    console.log(`Creating Express account for provider ${provider.id} (${provider.email})`);
     
     const account = await stripe.accounts.create({
       type: 'express',
-      email: provider.email,
+      country: 'US', // Default to US, can be made configurable
+      email: provider.email, // Optional but helpful
       metadata: {
-        provider_id: provider.id
+        provider_id: provider.id,
+        provider_name: provider.name || 'Unknown',
+        created_by: 'gold_touch_massage_service'
+      },
+      // Enhanced settings for Express accounts
+      settings: {
+        payouts: {
+          schedule: {
+            interval: 'daily' // Daily payouts for better cash flow
+          }
+        }
       }
     });
 
-    // Save the account ID to the database
+    // Step 2: Save the account ID to the database
     await pool.query(
       'UPDATE providers SET stripe_account_id = $1, updated_at = NOW() WHERE id = $2',
       [account.id, provider.id]
     );
 
-    console.log(`Created Stripe Connect account ${account.id} for provider ${provider.id}`);
+    console.log(`✅ Created Stripe Express account ${account.id} for provider ${provider.id}`);
+    console.log(`📧 Account email: ${provider.email}`);
+    console.log(`🔗 Ready for onboarding link creation`);
+    
     return account.id;
   } catch (error) {
-    console.error('Error ensuring Connect account:', error);
+    console.error('❌ Error creating Express account:', error);
     throw error;
   }
 }

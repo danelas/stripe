@@ -331,10 +331,10 @@ app.get("/provider/onboard/:providerId", async (req, res) => {
       return res.redirect(`/providers/${providerId}?done=1`);
     }
 
-    // Create Stripe Connect account link with provider ID in metadata
-    const accountLink = await createAccountLink(providerId);
+    // Execute the correct two-step Express account onboarding process
+    const onboardingResult = await createAccountLink(providerId);
     
-    // Show onboarding page with provider info
+    // Show enhanced onboarding page with provider info
     res.send(`
       <!DOCTYPE html>
       <html>
@@ -363,6 +363,14 @@ app.get("/provider/onboard/:providerId", async (req, res) => {
             margin: 20px 0;
             text-align: left;
           }
+          .account-info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            font-size: 14px;
+            color: #0066cc;
+          }
           .btn {
             background: #28a745;
             color: white;
@@ -374,12 +382,19 @@ app.get("/provider/onboard/:providerId", async (req, res) => {
             margin-top: 20px;
           }
           .btn:hover { background: #218838; }
+          .steps {
+            text-align: left;
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 5px;
+          }
         </style>
       </head>
       <body>
         <div class="onboard-card">
-          <h1>🏦 Setup Your Payments</h1>
-          <p>Hi! You've been invited to set up automatic payments with Gold Touch Mobile.</p>
+          <h1>🏦 Express Account Setup</h1>
+          <p>Welcome! Your Stripe Express account has been created and is ready for setup.</p>
           
           <div class="provider-info">
             <h3>Your Provider Information:</h3>
@@ -387,14 +402,33 @@ app.get("/provider/onboard/:providerId", async (req, res) => {
             <p><strong>Email:</strong> ${provider.email || 'Not provided'}</p>
             <p><strong>Name:</strong> ${provider.name || 'Not provided'}</p>
           </div>
+
+          <div class="account-info">
+            <strong>✅ Step 1 Complete:</strong> Express account created (${onboardingResult.account_id})<br>
+            <strong>🔗 Step 2:</strong> Complete your onboarding setup
+          </div>
+
+          <div class="steps">
+            <h3>What happens next:</h3>
+            <ol>
+              <li>Click the button below to go to Stripe</li>
+              <li>Verify your identity and business information</li>
+              <li>Connect your bank account for payouts</li>
+              <li>Start receiving automatic payments!</li>
+            </ol>
+          </div>
           
-          <p>Click below to connect your bank account and start receiving payments:</p>
-          
-          <a href="${accountLink}" class="btn">🚀 Setup My Payments</a>
+          <a href="${onboardingResult.url}" class="btn">🚀 Complete Setup on Stripe</a>
           
           <p style="margin-top: 30px; font-size: 14px; color: #666;">
-            This will take you to Stripe to securely connect your bank account.<br>
-            You'll receive payments automatically after each service.
+            <strong>Secure:</strong> This link goes directly to Stripe's secure platform.<br>
+            <strong>Automatic:</strong> No manual account ID sharing needed.<br>
+            <strong>Fast:</strong> Setup takes just a few minutes.
+          </p>
+
+          <p style="font-size: 12px; color: #999; margin-top: 20px;">
+            Link expires: ${new Date(onboardingResult.expires_at * 1000).toLocaleString()}<br>
+            Account ID: ${onboardingResult.account_id}
           </p>
         </div>
       </body>
