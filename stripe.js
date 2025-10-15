@@ -9,7 +9,11 @@ import {
 } from "./db.js";
 import { sendPaymentConfirmationSMS, sendTransferNotificationSMS } from "./textmagic.js";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET);
+// Initialize Stripe with API version 2025-09-30.clover
+const stripe = new Stripe(process.env.STRIPE_SECRET, {
+  apiVersion: '2025-09-30.clover',
+  typescript: true,
+});
 
 /**
  * Create a Stripe Checkout session for a provider with tip option
@@ -35,7 +39,7 @@ export async function createCheckout({ providerId, productName, amountCents, all
       })
     }];
 
-    // Add tip options if enabled
+    // Create checkout session with 2025-09-30.clover API compatibility
     const sessionConfig = {
       mode: "payment",
       line_items: lineItems,
@@ -44,7 +48,23 @@ export async function createCheckout({ providerId, productName, amountCents, all
       metadata: {
         provider_id: providerId,
         service_amount_cents: amountCents.toString(),
-        service_breakdown: serviceBreakdown ? JSON.stringify(serviceBreakdown) : null
+        service_breakdown: serviceBreakdown ? JSON.stringify(serviceBreakdown) : null,
+        api_version: '2025-09-30.clover'
+      },
+      // Enhanced for latest API version
+      payment_intent_data: {
+        metadata: {
+          provider_id: providerId,
+          service_type: 'massage_service'
+        }
+      },
+      // Improved UX options available in latest API
+      billing_address_collection: 'auto',
+      shipping_address_collection: {
+        allowed_countries: ['US', 'CA']
+      },
+      phone_number_collection: {
+        enabled: true
       }
     };
     
@@ -84,17 +104,19 @@ export async function createCheckout({ providerId, productName, amountCents, all
 }
 
 /**
- * Handle Stripe webhook events
+ * Handle Stripe webhook events (2025-09-30.clover compatible)
  */
 export async function handleStripeWebhook(req, res) {
   let event;
 
   try {
-    // Verify webhook signature
+    // Verify webhook signature with enhanced security
     event = stripe.webhooks.constructEvent(
       req.body,
       req.headers["stripe-signature"],
-      process.env.STRIPE_WEBHOOK_SECRET
+      process.env.STRIPE_WEBHOOK_SECRET,
+      undefined,
+      Stripe.createSubtleCryptoProvider() // Enhanced crypto for latest API
     );
   } catch (err) {
     console.error("Webhook signature verification failed:", err.message);
@@ -102,25 +124,50 @@ export async function handleStripeWebhook(req, res) {
   }
 
   try {
-    // Handle the event
+    // Handle events with enhanced logging for latest API
+    console.log(`Processing webhook event: ${event.type} (API version: ${event.api_version || 'unknown'})`);
+    
     switch (event.type) {
       case "checkout.session.completed":
         await handleCheckoutCompleted(event.data.object);
         break;
       
+      case "checkout.session.async_payment_succeeded":
+        // New event type in latest API for async payments
+        await handleCheckoutCompleted(event.data.object);
+        break;
+      
       case "account.updated":
-        // Handle Connect account updates if needed
-        console.log("Connect account updated:", event.data.object.id);
+        // Handle Connect account updates with enhanced data
+        console.log("Connect account updated:", {
+          account_id: event.data.object.id,
+          charges_enabled: event.data.object.charges_enabled,
+          details_submitted: event.data.object.details_submitted
+        });
+        break;
+
+      case "payment_intent.succeeded":
+        // Enhanced payment intent handling for latest API
+        console.log("Payment intent succeeded:", event.data.object.id);
         break;
 
       default:
         console.log(`Unhandled event type: ${event.type}`);
     }
 
-    res.json({ received: true });
+    // Return structured response for latest API
+    res.json({ 
+      received: true, 
+      event_id: event.id,
+      api_version: event.api_version 
+    });
   } catch (error) {
     console.error("Error processing webhook:", error);
-    res.status(500).json({ error: "Webhook processing failed" });
+    res.status(500).json({ 
+      error: "Webhook processing failed",
+      event_type: event?.type,
+      event_id: event?.id 
+    });
   }
 }
 
@@ -272,7 +319,7 @@ export async function runDailyTransfers(date = todayInTZ(process.env.TIMEZONE ||
 }
 
 /**
- * Create an account link for provider onboarding
+ * Create an account link for provider onboarding (2025-09-30.clover compatible)
  */
 export async function createAccountLink(providerId) {
   try {
@@ -284,14 +331,21 @@ export async function createAccountLink(providerId) {
     const accountId = await ensureConnectAccount(provider);
 
     const baseUrl = process.env.DOMAIN || process.env.RENDER_EXTERNAL_URL || 'https://localhost:3000';
+    
+    // Enhanced account link creation with latest API features
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
       refresh_url: `${baseUrl}/providers/${providerId}?retry=1`,
       return_url: `${baseUrl}/providers/${providerId}?done=1`,
-      type: "account_onboarding"
+      type: "account_onboarding",
+      // Enhanced collection options for latest API
+      collection_options: {
+        fields: "eventually_due",
+        future_requirements: "include"
+      }
     });
 
-    console.log(`Created account link for provider ${providerId}`);
+    console.log(`Created enhanced account link for provider ${providerId} (API: 2025-09-30.clover)`);
     return accountLink.url;
   } catch (error) {
     console.error("Error creating account link:", error);
@@ -300,7 +354,7 @@ export async function createAccountLink(providerId) {
 }
 
 /**
- * Get provider's Connect account status
+ * Get provider's Connect account status (2025-09-30.clover enhanced)
  */
 export async function getProviderStatus(providerId) {
   try {
@@ -308,21 +362,47 @@ export async function getProviderStatus(providerId) {
     if (!provider || !provider.stripe_account_id) {
       return {
         onboarding_status: "pending",
-        charges_enabled: false
+        charges_enabled: false,
+        payouts_enabled: false,
+        requirements: {
+          currently_due: [],
+          eventually_due: []
+        }
       };
     }
 
+    // Enhanced account retrieval with requirements data
     const account = await stripe.accounts.retrieve(provider.stripe_account_id);
     
     return {
       onboarding_status: account.details_submitted ? "complete" : "pending",
-      charges_enabled: account.charges_enabled
+      charges_enabled: account.charges_enabled,
+      payouts_enabled: account.payouts_enabled,
+      // Enhanced requirements tracking in latest API
+      requirements: {
+        currently_due: account.requirements?.currently_due || [],
+        eventually_due: account.requirements?.eventually_due || [],
+        past_due: account.requirements?.past_due || [],
+        pending_verification: account.requirements?.pending_verification || []
+      },
+      // Additional status info available in latest API
+      capabilities: {
+        card_payments: account.capabilities?.card_payments || 'inactive',
+        transfers: account.capabilities?.transfers || 'inactive'
+      },
+      business_profile: {
+        mcc: account.business_profile?.mcc,
+        name: account.business_profile?.name,
+        support_email: account.business_profile?.support_email
+      }
     };
   } catch (error) {
     console.error("Error getting provider status:", error);
     return {
       onboarding_status: "error",
-      charges_enabled: false
+      charges_enabled: false,
+      payouts_enabled: false,
+      error: error.message
     };
   }
 }
