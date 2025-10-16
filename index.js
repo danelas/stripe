@@ -4,8 +4,10 @@ import dotenv from "dotenv";
 import { createCheckout, handleStripeWebhook, runDailyTransfers, createAccountLink } from "./stripe.js";
 import { sendPaymentLinkSMS, sendPaymentConfirmationSMS, testSMS } from "./textmagic.js";
 import { getAllServicePricing, getServicePricing, upsertServicePricing, createProvider } from "./db.js";
-import { syncProvidersFromMainDatabase, testProviderDatabaseConnection, getProviderFromMainDatabase } from "./provider-sync.js";
-import { getOriginalUrl, getUrlStats, initializeUrlShortenerTable, createShortUrl } from "./url-shortener.js";
+import { syncProvidersFromMainDatabase, testProviderDatabaseConnection } from "./provider-sync.js";
+import { createShortUrl, getOriginalUrl, initializeUrlShortener } from "./url-shortener.js";
+import leadRoutes from "./lead-endpoints.js";
+import { initializeLeadDatabase } from "./init-lead-db.js";
 
 // Load environment variables
 dotenv.config();
@@ -32,6 +34,9 @@ app.get("/health", (_req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
+// Mount lead generation routes
+app.use("/api", leadRoutes);
 
 // Create open amount checkout (temporary workaround for pricing issues)
 app.post("/checkout-open-amount", express.json(), async (req, res) => {
@@ -468,14 +473,29 @@ app.post("/admin/init-url-shortener", async (_req, res) => {
     const result = await initializeUrlShortenerTable();
     
     res.json({ 
-      ok: true, 
-      message: "URL shortener table initialized successfully",
-      tableCreated: result,
-      timestamp: new Date().toISOString()
+      success: true, 
+      message: "URL shortener table initialized",
+      result 
     });
   } catch (error) {
-    console.error("URL shortener initialization error:", error);
+    console.error("Init URL shortener error:", error);
     res.status(500).json({ error: "Failed to initialize URL shortener table", details: error.message });
+  }
+});
+
+// Initialize lead generation database
+app.post("/admin/init-lead-database", async (_req, res) => {
+  try {
+    await initializeLeadDatabase();
+    
+    res.json({ 
+      success: true, 
+      message: "Lead generation database initialized successfully",
+      tables: ["leads", "lead_interactions", "provider_optouts", "lead_config"]
+    });
+  } catch (error) {
+    console.error("Init lead database error:", error);
+    res.status(500).json({ error: "Failed to initialize lead database" });
   }
 });
 
