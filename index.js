@@ -2,6 +2,8 @@ import express from "express";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import { createCheckout, handleStripeWebhook, runDailyTransfers, createAccountLink } from "./stripe.js";
+// Import handleCheckoutCompleted for alternative webhook
+import { handleCheckoutCompleted } from "./stripe.js";
 import { sendPaymentLinkSMS, sendPaymentConfirmationSMS, testSMS } from "./textmagic.js";
 import { getAllServicePricing, getServicePricing, upsertServicePricing, createProvider } from "./db.js";
 import { syncProvidersFromMainDatabase, testProviderDatabaseConnection } from "./provider-sync.js";
@@ -35,8 +37,108 @@ app.get("/health", (_req, res) => {
   });
 });
 
+// IMPORTANT: Stripe webhook endpoint MUST be defined BEFORE any JSON parsing middleware
+// This ensures the raw body is preserved for signature verification
+app.post("/stripe-webhook", 
+  express.raw({ type: "application/json" }), 
+  handleStripeWebhook
+);
+
+// Alternative webhook endpoint for platforms that force JSON parsing
+app.post("/stripe-webhook-alt", 
+  express.json(),
+  (req, res) => {
+    console.log("⚠️  Using alternative webhook handler - signature verification will be skipped");
+    console.log("🔍 This should only be used if the main webhook fails due to body parsing issues");
+    
+    // Skip signature verification and process the event directly
+    try {
+      const event = req.body;
+      console.log(`Processing webhook event: ${event.type} (signature verification skipped)`);
+      
+      switch (event.type) {
+        case "checkout.session.completed":
+          handleCheckoutCompleted(event.data.object);
+          break;
+        case "checkout.session.async_payment_succeeded":
+          handleCheckoutCompleted(event.data.object);
+          break;
+        default:
+          console.log(`Unhandled event type: ${event.type}`);
+      }
+      
+      res.json({ received: true, event_id: event.id });
+    } catch (error) {
+      console.error("Error processing alternative webhook:", error);
+      res.status(500).json({ error: "Webhook processing failed" });
+    }
+  }
+);
+
 // Mount lead generation routes
 app.use("/api", leadRoutes);
+
+// Success and cancel pages for Stripe checkout
+app.get("/success", (req, res) => {
+  const sessionId = req.query.sid;
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Payment Successful</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+        .container { max-width: 500px; margin: 0 auto; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .success { color: #28a745; font-size: 48px; margin-bottom: 20px; }
+        h1 { color: #333; margin-bottom: 20px; }
+        p { color: #666; line-height: 1.6; margin-bottom: 15px; }
+        .session-id { background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; color: #666; margin-top: 20px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="success">✅</div>
+        <h1>Payment Successful!</h1>
+        <p>Thank you for your payment. Your transaction has been processed successfully.</p>
+        <p>You will receive an SMS confirmation shortly with your payment details.</p>
+        <p>If you have any questions, please contact your service provider.</p>
+        ${sessionId ? `<div class="session-id">Session ID: ${sessionId}</div>` : ''}
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+app.get("/cancel", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Payment Cancelled</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+        .container { max-width: 500px; margin: 0 auto; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .cancel { color: #dc3545; font-size: 48px; margin-bottom: 20px; }
+        h1 { color: #333; margin-bottom: 20px; }
+        p { color: #666; line-height: 1.6; margin-bottom: 15px; }
+        .button { display: inline-block; background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin-top: 20px; }
+        .button:hover { background: #0056b3; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="cancel">❌</div>
+        <h1>Payment Cancelled</h1>
+        <p>Your payment was cancelled. No charges have been made.</p>
+        <p>If you need to complete your payment, please contact your service provider for a new payment link.</p>
+        <a href="/" class="button">Return to Home</a>
+      </div>
+    </body>
+    </html>
+  `);
+});
 
 // Create open amount checkout (temporary workaround for pricing issues)
 app.post("/checkout-open-amount", express.json(), async (req, res) => {
@@ -253,12 +355,6 @@ app.post("/checkout-with-sms", express.json(), async (req, res) => {
     res.status(500).json({ error: "Failed to create checkout session" });
   }
 });
-
-// Stripe webhook endpoint (requires raw body for signature verification)
-app.post("/stripe-webhook", 
-  bodyParser.raw({ type: "application/json" }), 
-  handleStripeWebhook
-);
 
 // Provider onboarding link for WordPress to call
 app.post("/provider/account-link", express.json(), async (req, res) => {
@@ -574,6 +670,29 @@ app.post("/send-confirmation-sms", express.json(), async (req, res) => {
   } catch (error) {
     console.error("Confirmation SMS error:", error);
     res.status(500).json({ error: "Failed to send confirmation SMS" });
+  }
+});
+
+// Test SMS functionality
+app.post("/test-sms", express.json(), async (req, res) => {
+  try {
+    const { phone, message } = req.body;
+    
+    if (!phone) {
+      return res.status(400).json({ error: "phone is required" });
+    }
+    
+    const testMessage = message || `Test SMS from Stripe Payment Service at ${new Date().toLocaleString()}`;
+    
+    // Import testSMS function
+    const { testSMS } = await import('./textmagic.js');
+    const result = await testSMS(phone);
+    
+    console.log(`Test SMS result:`, result);
+    res.json(result);
+  } catch (error) {
+    console.error("Test SMS error:", error);
+    res.status(500).json({ error: "Failed to send test SMS", details: error.message });
   }
 });
 
@@ -1033,4 +1152,6 @@ app.listen(PORT, () => {
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`💳 Stripe: ${process.env.STRIPE_SECRET ? 'Configured' : 'Not configured'}`);
   console.log(`🗄️  Database: ${process.env.DATABASE_URL ? 'Configured' : 'Not configured'}`);
+  console.log(`📱 SMS Bridge: ${process.env.SMS_BRIDGE_URL ? 'Configured' : 'Not configured'}`);
+  console.log(`📱 TextMagic: ${process.env.TEXTMAGIC_USERNAME && process.env.TEXTMAGIC_API_KEY ? 'Configured' : 'Not configured'}`);
 });

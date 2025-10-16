@@ -109,6 +109,11 @@ export async function createCheckout({ providerId, productName, amountCents, all
 export async function handleStripeWebhook(req, res) {
   let event;
 
+  // Debug logging for webhook body
+  console.log(`🔍 Webhook received - Body type: ${typeof req.body}, Is Buffer: ${Buffer.isBuffer(req.body)}`);
+  console.log(`🔍 Content-Type: ${req.headers['content-type']}`);
+  console.log(`🔍 Stripe-Signature present: ${!!req.headers['stripe-signature']}`);
+
   try {
     // Verify webhook signature with enhanced security
     event = stripe.webhooks.constructEvent(
@@ -118,8 +123,10 @@ export async function handleStripeWebhook(req, res) {
       undefined,
       Stripe.createSubtleCryptoProvider() // Enhanced crypto for latest API
     );
+    console.log(`✅ Webhook signature verified successfully`);
   } catch (err) {
-    console.error("Webhook signature verification failed:", err.message);
+    console.error("❌ Webhook signature verification failed:", err.message);
+    console.error(`🔍 Body preview: ${req.body ? req.body.toString().substring(0, 100) : 'null'}...`);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
@@ -174,7 +181,7 @@ export async function handleStripeWebhook(req, res) {
 /**
  * Handle successful checkout completion
  */
-async function handleCheckoutCompleted(session) {
+export async function handleCheckoutCompleted(session) {
   const providerId = session.metadata.provider_id;
   const serviceAmountCents = parseInt(session.metadata.service_amount_cents || session.amount_total);
   const serviceBreakdown = session.metadata.service_breakdown ? JSON.parse(session.metadata.service_breakdown) : null;
@@ -205,6 +212,49 @@ async function handleCheckoutCompleted(session) {
   );
 
   console.log(`Recorded payment: ${session.id} for provider ${providerId}, service: $${serviceAmountCents/100}, tip: $${tipAmount/100}, total: $${totalPaid/100}`);
+
+  // Send SMS confirmation to customer with payment details
+  try {
+    const customerPhone = session.customer_details?.phone;
+    const customerName = session.customer_details?.name || 'Customer';
+    const customerEmail = session.customer_details?.email;
+    
+    if (customerPhone) {
+      console.log(`Sending payment confirmation SMS to ${customerPhone}`);
+      
+      // Get provider info for personalized message
+      const provider = await getProviderById(providerId);
+      const providerName = provider?.name || 'your service provider';
+      
+      // Determine service name from breakdown or use default
+      let serviceName = 'Mobile Massage Service';
+      if (serviceBreakdown && Array.isArray(serviceBreakdown) && serviceBreakdown.length > 0) {
+        serviceName = serviceBreakdown.map(s => s.name).join(' + ');
+      }
+      
+      const smsResult = await sendPaymentConfirmationSMS(customerPhone, {
+        customerName,
+        serviceName,
+        amount: totalPaid,
+        providerName
+      });
+      
+      if (smsResult.success) {
+        console.log(`✅ Payment confirmation SMS sent successfully to ${customerPhone}`);
+      } else {
+        console.error(`❌ Failed to send payment confirmation SMS: ${smsResult.error}`);
+      }
+    } else {
+      console.warn(`⚠️  No phone number available for customer in session ${session.id}`);
+      console.log('Customer details:', {
+        name: customerName,
+        email: customerEmail,
+        phone: customerPhone
+      });
+    }
+  } catch (error) {
+    console.error('Error sending payment confirmation SMS:', error);
+  }
 }
 
 /**
