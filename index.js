@@ -5,7 +5,7 @@ import { createCheckout, handleStripeWebhook, runDailyTransfers, createAccountLi
 import { sendPaymentLinkSMS, sendPaymentConfirmationSMS, testSMS } from "./textmagic.js";
 import { getAllServicePricing, getServicePricing, upsertServicePricing, createProvider } from "./db.js";
 import { syncProvidersFromMainDatabase, testProviderDatabaseConnection } from "./provider-sync.js";
-import { createShortUrl, getOriginalUrl, initializeUrlShortener } from "./url-shortener.js";
+import { createShortUrl, getOriginalUrl, initializeUrlShortenerTable } from "./url-shortener.js";
 import leadRoutes from "./lead-endpoints.js";
 import { initializeLeadDatabase } from "./init-lead-db.js";
 
