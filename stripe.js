@@ -219,6 +219,13 @@ export async function handleCheckoutCompleted(session) {
     const customerName = session.customer_details?.name || 'Customer';
     const customerEmail = session.customer_details?.email;
     
+    console.log(`🔍 Customer details from session:`, {
+      phone: customerPhone,
+      name: customerName,
+      email: customerEmail,
+      sessionId: session.id
+    });
+    
     if (customerPhone) {
       console.log(`Sending payment confirmation SMS to ${customerPhone}`);
       
