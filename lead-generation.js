@@ -21,7 +21,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET, {
 /**
  * Create a new lead from client inquiry
  */
-export async function createLead(leadData) {
+async function createLead(leadData) {
   try {
     const {
       lead_id,
@@ -86,7 +86,7 @@ function stripPIIFromNotes(notes) {
 /**
  * Send teaser SMS to provider about new lead
  */
-export async function sendLeadTeaser(lead, provider) {
+async function sendLeadTeaser(lead, provider) {
   try {
     // Check if provider has opted out
     const optOut = await pool.query(
@@ -155,7 +155,7 @@ Gold Touch List provides advertising access to client inquiries. We do not arran
 /**
  * Handle provider response to teaser
  */
-export async function handleProviderResponse(providerPhone, message, leadId) {
+async function handleProviderResponse(providerPhone, message, leadId) {
   try {
     const response = message.trim().toUpperCase();
     
@@ -450,6 +450,8 @@ async function sendSMS(phone, message) {
 }
 
 export {
+  createLead,
+  sendLeadTeaser,
   stripPIIFromNotes,
   createTeaserMessage,
   handleProviderResponse,
