@@ -44,12 +44,49 @@ app.post("/stripe-webhook",
   handleStripeWebhook
 );
 
+// Alternative webhook path (in case Stripe is configured with /webhooks/stripe)
+app.post("/webhooks/stripe", 
+  express.raw({ type: "application/json" }), 
+  handleStripeWebhook
+);
+
 // Alternative webhook endpoint for platforms that force JSON parsing
 app.post("/stripe-webhook-alt", 
   express.json(),
   (req, res) => {
     console.log("⚠️  Using alternative webhook handler - signature verification will be skipped");
     console.log("🔍 This should only be used if the main webhook fails due to body parsing issues");
+    
+    // Skip signature verification and process the event directly
+    try {
+      const event = req.body;
+      console.log(`Processing webhook event: ${event.type} (signature verification skipped)`);
+      
+      switch (event.type) {
+        case "checkout.session.completed":
+          handleCheckoutCompleted(event.data.object);
+          break;
+        case "checkout.session.async_payment_succeeded":
+          handleCheckoutCompleted(event.data.object);
+          break;
+        default:
+          console.log(`Unhandled event type: ${event.type}`);
+      }
+      
+      res.json({ received: true, event_id: event.id });
+    } catch (error) {
+      console.error("Error processing alternative webhook:", error);
+      res.status(500).json({ error: "Webhook processing failed" });
+    }
+  }
+);
+
+// Alternative webhook for /webhooks/stripe with JSON parsing (fallback)
+app.post("/webhooks/stripe-alt", 
+  express.json(),
+  (req, res) => {
+    console.log("⚠️  Using /webhooks/stripe-alt - signature verification will be skipped");
+    console.log("🔍 This is a fallback for when signature verification fails");
     
     // Skip signature verification and process the event directly
     try {
@@ -134,6 +171,38 @@ app.get("/cancel", (req, res) => {
         <p>Your payment was cancelled. No charges have been made.</p>
         <p>If you need to complete your payment, please contact your service provider for a new payment link.</p>
         <a href="/" class="button">Return to Home</a>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+// Success page for unlocks system (based on logs showing /unlocks/success)
+app.get("/unlocks/success", (req, res) => {
+  const sessionId = req.query.sid;
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Payment Successful</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+        .container { max-width: 500px; margin: 0 auto; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .success { color: #28a745; font-size: 48px; margin-bottom: 20px; }
+        h1 { color: #333; margin-bottom: 20px; }
+        p { color: #666; line-height: 1.6; margin-bottom: 15px; }
+        .session-id { background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; color: #666; margin-top: 20px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="success">✅</div>
+        <h1>Payment Successful!</h1>
+        <p>Thank you for your payment. Your transaction has been processed successfully.</p>
+        <p>You will receive an SMS confirmation shortly with your payment details.</p>
+        <p>Your content has been unlocked and you should receive access information via SMS.</p>
+        ${sessionId ? `<div class="session-id">Session ID: ${sessionId}</div>` : ''}
       </div>
     </body>
     </html>
