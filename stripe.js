@@ -134,7 +134,8 @@ export async function handleStripeWebhook(req, res) {
     console.log(`✅ Webhook signature verified successfully`);
   } catch (err) {
     console.error("❌ Webhook signature verification failed:", err.message);
-    console.error(`🔍 Body preview: ${req.body ? req.body.toString().substring(0, 100) : 'null'}...`);
+    console.error(`🔍 Body type: ${typeof req.body}, Is Buffer: ${Buffer.isBuffer(req.body)}`);
+    console.error(`🔍 Body preview: ${req.body ? (typeof req.body === 'object' ? JSON.stringify(req.body).substring(0, 100) : req.body.toString().substring(0, 100)) : 'null'}...`);
     
     // If signature verification fails, try to process the event anyway (for hosting platforms that modify the body)
     console.log("⚠️ Attempting to process webhook without signature verification...");
