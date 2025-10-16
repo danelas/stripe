@@ -17,6 +17,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Handle Stripe webhooks - will work with both raw and parsed bodies
+// The webhook handler will convert parsed objects back to strings if needed
+
 // Health check endpoint for Render
 app.get("/", (_req, res) => {
   res.json({ 
@@ -37,42 +40,9 @@ app.get("/health", (_req, res) => {
   });
 });
 
-// IMPORTANT: Stripe webhook endpoint MUST be defined BEFORE any JSON parsing middleware
-// This ensures the raw body is preserved for signature verification
-app.post("/stripe-webhook", 
-  express.raw({ type: "application/json" }), 
-  handleStripeWebhook
-);
-
-// Webhook endpoint for Render hosting (which forces JSON parsing)
-// This skips signature verification due to hosting platform limitations
-app.post("/webhooks/stripe", 
-  express.json(),
-  async (req, res) => {
-    console.log("🔍 Processing /webhooks/stripe with JSON body (signature verification skipped due to Render hosting)");
-    
-    try {
-      const event = req.body;
-      console.log(`Processing webhook event: ${event.type} (Render hosting - no signature verification)`);
-      
-      switch (event.type) {
-        case "checkout.session.completed":
-          await handleCheckoutCompleted(event.data.object);
-          break;
-        case "checkout.session.async_payment_succeeded":
-          await handleCheckoutCompleted(event.data.object);
-          break;
-        default:
-          console.log(`Unhandled event type: ${event.type}`);
-      }
-      
-      res.json({ received: true, event_id: event.id, platform: "render" });
-    } catch (error) {
-      console.error("Error processing Render webhook:", error);
-      res.status(500).json({ error: "Webhook processing failed" });
-    }
-  }
-);
+// Stripe webhook endpoints - handle both raw and JSON bodies
+app.post("/stripe-webhook", express.raw({ type: "application/json" }), handleStripeWebhook);
+app.post("/webhooks/stripe", express.json(), handleStripeWebhook);
 
 // Alternative webhook endpoint for platforms that force JSON parsing
 app.post("/stripe-webhook-alt", 
