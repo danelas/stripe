@@ -296,7 +296,7 @@ async function createPaymentLink(leadId, providerId) {
 /**
  * Handle payment confirmation webhook
  */
-export async function handleLeadPayment(session) {
+async function handleLeadPayment(session) {
   try {
     const { lead_id, provider_id } = session.metadata;
     
