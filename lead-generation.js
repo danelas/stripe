@@ -7,6 +7,27 @@ import pkg from 'pg';
 const { Pool } = pkg;
 import Stripe from 'stripe';
 
+// Category-based pricing (in cents) - matches gold-touch-list-leads
+const SERVICE_PRICES_CENTS = {
+  skincare: 1800,      // $18
+  makeup: 1200,        // $12
+  esthetics: 1200,     // $12
+  cleaning: 1000,      // $10
+  bodywork: 1500,      // $15
+  beauty: 1200,        // $12
+  massage: 1500        // $15
+};
+
+function getPriceForServiceType(serviceType) {
+  if (!serviceType) return 2000; // Default $20
+  const key = serviceType.toString().trim().toLowerCase();
+  return SERVICE_PRICES_CENTS[key] || 2000;
+}
+
+function formatPrice(cents) {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
 // Database connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -133,6 +154,9 @@ async function sendLeadTeaser(lead, provider) {
  * Create teaser message (NO PII)
  */
 function createTeaserMessage(lead, interactionId) {
+  const priceCents = getPriceForServiceType(lead.service_type);
+  const priceText = formatPrice(priceCents);
+  
   const message = `🔔 NEW CLIENT INQUIRY
 
 📍 Location: ${lead.city}
@@ -142,7 +166,7 @@ function createTeaserMessage(lead, interactionId) {
 📝 Notes: ${lead.notes_snippet || 'No additional notes'}
 
 💡 Want full contact details?
-Reply Y for $20 access
+Reply Y for ${priceText} access
 Reply N to skip
 Reply STOP to opt out
 
@@ -223,8 +247,20 @@ async function handleYesResponse(leadId, provider) {
       return { resent_link: true };
     }
 
+    // Get lead to determine price
+    const leadResult = await pool.query('SELECT * FROM leads WHERE lead_id = $1', [leadId]);
+    const lead = leadResult.rows[0];
+    
+    if (!lead) {
+      console.error(`❌ Lead ${leadId} not found`);
+      return { error: 'Lead not found' };
+    }
+    
+    const priceCents = getPriceForServiceType(lead.service_type);
+    const priceText = formatPrice(priceCents);
+    
     // Create new payment link
-    const paymentLink = await createPaymentLink(leadId, provider.id);
+    const paymentLink = await createPaymentLink(leadId, provider.id, lead.service_type);
     
     // Update interaction
     await pool.query(`
@@ -237,7 +273,7 @@ async function handleYesResponse(leadId, provider) {
     `, [leadId, provider.id, paymentLink.url, paymentLink.session_id]);
 
     // Send payment link
-    const message = `💳 Pay $20 to access full client details: ${paymentLink.url}
+    const message = `💳 Pay ${priceText} to access full client details: ${paymentLink.url}
 
 This link expires in 24 hours.
 Lead #${leadId}`;
@@ -256,19 +292,20 @@ Lead #${leadId}`;
 /**
  * Create Stripe payment link for lead access
  */
-async function createPaymentLink(leadId, providerId) {
+async function createPaymentLink(leadId, providerId, serviceType) {
   try {
+    const priceCents = getPriceForServiceType(serviceType);
     const config = await getLeadConfig();
     
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       line_items: [{
         price_data: {
-          currency: config.currency,
-          unit_amount: config.price_cents,
+          currency: config.currency || 'usd',
+          unit_amount: priceCents,
           product_data: {
-            name: `Lead Access - ${leadId}`,
-            description: 'Access to client contact details'
+            name: `Lead Access - ${serviceType || 'Service'} - ${leadId}`,
+            description: `Access to client contact details for ${serviceType || 'lead'}`
           }
         },
         quantity: 1
@@ -278,10 +315,13 @@ async function createPaymentLink(leadId, providerId) {
       metadata: {
         lead_id: leadId,
         provider_id: providerId,
-        service_type: 'lead_access'
+        service_type: serviceType || 'lead_access',
+        price_cents: priceCents.toString()
       },
       expires_at: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
     });
+
+    console.log(`💳 Created payment link for ${serviceType} at ${formatPrice(priceCents)}`);
 
     return {
       url: session.url,
@@ -459,5 +499,7 @@ export {
   sendRevealedDetails,
   upsertLeadInteraction,
   updateInteractionStatus,
-  getLeadConfig
+  getLeadConfig,
+  getPriceForServiceType,
+  formatPrice
 };
