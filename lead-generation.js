@@ -12,7 +12,7 @@ const SERVICE_PRICES_CENTS = {
   skincare: 1800,      // $18
   makeup: 1200,        // $12
   esthetics: 1200,     // $12
-  cleaning: 1000,      // $10
+  cleaning: 1300,      // $13
   bodywork: 1500,      // $15
   beauty: 1200,        // $12
   massage: 1500        // $15
