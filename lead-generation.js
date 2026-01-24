@@ -15,7 +15,8 @@ const SERVICE_PRICES_CENTS = {
   cleaning: 1300,      // $13
   bodywork: 1500,      // $15
   beauty: 1200,        // $12
-  massage: 1500        // $15
+  massage: 1500,       // $15
+  wellness: 1800       // $18
 };
 
 function getPriceForServiceType(serviceType) {
